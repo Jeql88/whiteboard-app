@@ -6,6 +6,16 @@
 
 const whiteboardUsers = {}; // { [whiteboardId]: [{ userId, username, socketId }] }
 
+// Board ids that currently have at least one distinct user present.
+function getActiveBoardIds() {
+  const ids = [];
+  for (const [boardId, users] of Object.entries(whiteboardUsers)) {
+    const distinct = new Set(users.map((u) => u.userId));
+    if (distinct.size > 0) ids.push(boardId);
+  }
+  return ids;
+}
+
 function registerPresenceHandlers(io, socket) {
   // Announce / refresh this user's presence on a board. Dedupe by userId so a
   // user who reconnects or opens multiple tabs shows as ONE avatar (keep the
@@ -51,4 +61,4 @@ function registerPresenceHandlers(io, socket) {
   });
 }
 
-module.exports = { registerPresenceHandlers };
+module.exports = { registerPresenceHandlers, getActiveBoardIds };

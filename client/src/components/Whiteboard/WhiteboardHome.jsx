@@ -4,6 +4,7 @@ import { Plus, Search, Loader2 } from "lucide-react";
 import {
   getWhiteboards,
   createWhiteboard,
+  getActiveBoards,
 } from "../../api/whiteboard";
 import WhiteboardCard from "./WhiteBoardCard.jsx";
 import ThemeToggle from "../ThemeToggle";
@@ -32,9 +33,22 @@ export default function WhiteboardHome() {
   const [showAllOwned, setShowAllOwned] = useState(false);
   const [showAllShared, setShowAllShared] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeBoards, setActiveBoards] = useState([]);
   const location = useLocation();
 
   const currentUserId = getUserIdFromToken();
+
+  // Poll which boards currently have someone editing, for the "live" badge.
+  useEffect(() => {
+    let alive = true;
+    const load = () => getActiveBoards().then((ids) => alive && setActiveBoards(ids));
+    load();
+    const t = setInterval(load, 15000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
 
   useEffect(() => {
     getWhiteboards()
@@ -193,6 +207,7 @@ export default function WhiteboardHome() {
                 whiteboard={wb}
                 onDelete={handleDelete}
                 onRename={handleRename}
+                isActive={activeBoards.includes(wb._id)}
               />
             ))}
           </div>
@@ -212,6 +227,7 @@ export default function WhiteboardHome() {
                 whiteboard={wb}
                 onDelete={handleDelete}
                 onRename={handleRename}
+                isActive={activeBoards.includes(wb._id)}
               />
             ))}
           </div>

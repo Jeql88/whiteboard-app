@@ -23,6 +23,7 @@ import { API_BASE } from "../../api/config";
 import { updateWhiteboard, saveThumbnail } from "../../api/whiteboard";
 import { useTheme } from "../../theme/ThemeContext";
 import { getColorForName, getInitials } from "../../utils/userColor";
+import { counterInvertDataUrl } from "../../utils/imageFilter";
 import CommentsSidebar from "./CommentsSidebar";
 import ChatBox from "../Chatbox";
 import Minimap from "./Minimap";
@@ -79,6 +80,9 @@ export default function WhiteboardEditor() {
   const [gridMode, setGridMode] = useState(
     () => localStorage.getItem("wb-grid") === "1"
   );
+  const [strokeWidth, setStrokeWidth] = useState(
+    () => Number(localStorage.getItem("wb-stroke")) || 4
+  );
 
   const toggleGrid = () =>
     setGridMode((v) => {
@@ -86,12 +90,29 @@ export default function WhiteboardEditor() {
       return !v;
     });
 
+  // Brush thickness presets (wider than Excalidraw's built-in max). Sets the
+  // width for the next drawn element via appState.currentItemStrokeWidth.
+  const STROKE_PRESETS = [
+    { label: "S", value: 2 },
+    { label: "M", value: 4 },
+    { label: "L", value: 8 },
+    { label: "XL", value: 16 },
+    { label: "XXL", value: 28 },
+  ];
+  const pickStroke = (value) => {
+    setStrokeWidth(value);
+    localStorage.setItem("wb-stroke", String(value));
+    apiRef.current?.updateScene({ appState: { currentItemStrokeWidth: value } });
+  };
+
   const apiRef = useRef(null); // excalidrawAPI
   const isApplyingRemote = useRef(false);
   const sceneTimer = useRef(null);
   const applyTimer = useRef(null);
   const cursorThrottle = useRef(0);
   const remoteCursors = useRef(new Map()); // socketId -> collaborator pointer
+  // fileId -> { original, inverted } dataURLs, for dark-mode image correction.
+  const imageVariants = useRef(new Map());
 
   // Identity: logged-in user, or a stable guest id persisted for this tab so a
   // guest keeps ONE identity across reloads/reconnects (avoids duplicate
@@ -158,16 +179,46 @@ export default function WhiteboardEditor() {
       }, 80);
     };
 
-    s.on("sceneInit", applyRemoteScene);
+    // On initial hydration, if a local draft is NEWER than the server scene
+    // (e.g. a refresh happened before the last change synced), prefer the draft
+    // and push it up. reconcileElements (id+version) makes this safe to merge.
+    let hydrated = false;
+    s.on("sceneInit", (scene) => {
+      applyRemoteScene(scene);
+      if (!hydrated) {
+        hydrated = true;
+        try {
+          const raw = localStorage.getItem(`wb-draft-${whiteboardId}`);
+          if (raw) {
+            const draft = JSON.parse(raw);
+            const serverNewer = false; // server scene has no timestamp we trust
+            if (draft?.elements?.length && !serverNewer && apiRef.current) {
+              const merged = reconcileElements(
+                apiRef.current.getSceneElementsIncludingDeleted(),
+                draft.elements
+              );
+              // Only act if the draft actually adds/updates something.
+              isApplyingRemote.current = false;
+              apiRef.current.updateScene({ elements: merged });
+            }
+          }
+        } catch {
+          /* ignore bad draft */
+        }
+      }
+    });
     s.on("sceneUpdate", applyRemoteScene);
 
-    // Remote cursors → Excalidraw collaborators Map.
+    // Remote cursors + selections → Excalidraw collaborators Map.
     s.on("cursorUpdate", (p) => {
+      const selectedElementIds = {};
+      for (const id of p.selectedElementIds || []) selectedElementIds[id] = true;
       remoteCursors.current.set(p.socketId, {
         username: p.username,
         pointer: { x: p.x, y: p.y },
         button: p.button || "up",
         color: { background: p.color, stroke: p.color },
+        selectedElementIds,
       });
       apiRef.current?.updateScene({
         collaborators: new Map(remoteCursors.current),
@@ -204,10 +255,55 @@ export default function WhiteboardEditor() {
           appState: { viewBackgroundColor: appState?.viewBackgroundColor },
           files: files || {},
         });
+        // Autosave a local draft (best-effort) to survive a refresh/cold-nap
+        // before the server confirms. Skipped if too large for localStorage.
+        try {
+          const draft = JSON.stringify({ t: Date.now(), elements: toSend });
+          if (draft.length < 2_000_000) {
+            localStorage.setItem(`wb-draft-${whiteboardId}`, draft);
+          }
+        } catch {
+          /* quota / serialization — non-critical */
+        }
       }, SCENE_DEBOUNCE_MS);
+      // Keep image dark-mode correction in sync as files come/go.
+      syncImageVariants();
     },
-    [socket, whiteboardId]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [socket, whiteboardId, theme]
   );
+
+  // Ensure each image file displays correctly for the current theme: cache the
+  // original + a counter-inverted variant, and push the theme-appropriate one
+  // (inverted in dark so Excalidraw's canvas invert cancels back to true color).
+  const syncImageVariants = useCallback(async () => {
+    const api = apiRef.current;
+    if (!api) return;
+    const files = api.getFiles() || {};
+    for (const [fileId, file] of Object.entries(files)) {
+      if (!file?.dataURL) continue;
+      let variant = imageVariants.current.get(fileId);
+      if (!variant) {
+        // First time we see this file: the current dataURL is the "original"
+        // (unless it's already a remote-applied variant — best effort).
+        variant = { original: file.dataURL, inverted: null };
+        imageVariants.current.set(fileId, variant);
+        variant.inverted = await counterInvertDataUrl(file.dataURL);
+      }
+      const want = theme === "dark" ? variant.inverted : variant.original;
+      if (want && file.dataURL !== want) {
+        isApplyingRemote.current = true;
+        api.addFiles([{ ...file, dataURL: want }]);
+        clearTimeout(applyTimer.current);
+        applyTimer.current = setTimeout(() => (isApplyingRemote.current = false), 80);
+      }
+    }
+  }, [theme]);
+
+  // Re-apply the correct image variant whenever the theme changes.
+  useEffect(() => {
+    syncImageVariants();
+  }, [theme, syncImageVariants]);
 
   // --- Local pointer → throttled cursor broadcast ---
   const handlePointer = useCallback(
@@ -216,6 +312,11 @@ export default function WhiteboardEditor() {
       const now = performance.now();
       if (now - cursorThrottle.current < CURSOR_THROTTLE_MS) return;
       cursorThrottle.current = now;
+      // Include the current selection so peers can see what each user has
+      // selected (Excalidraw renders collaborator selections natively).
+      const sel = apiRef.current
+        ? Object.keys(apiRef.current.getAppState().selectedElementIds || {})
+        : [];
       socket.emit("cursorUpdate", {
         whiteboardId,
         socketId: socket.id,
@@ -224,6 +325,7 @@ export default function WhiteboardEditor() {
         x: pointer.x,
         y: pointer.y,
         color: getColorForName(me.username),
+        selectedElementIds: sel,
       });
     },
     [socket, whiteboardId, me]
@@ -422,6 +524,24 @@ export default function WhiteboardEditor() {
             ))}
         </div>
 
+        {/* Brush thickness presets (wider than Excalidraw's built-in max) */}
+        <div className="mr-1 hidden items-center gap-0.5 rounded-lg border border-[var(--surface-border)] p-0.5 sm:flex">
+          {STROKE_PRESETS.map((s) => (
+            <button
+              key={s.value}
+              onClick={() => pickStroke(s.value)}
+              title={`Brush ${s.label} (${s.value}px)`}
+              className={`flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-[11px] font-semibold transition-colors ${
+                strokeWidth === s.value
+                  ? "bg-brand-600 text-white"
+                  : "text-[var(--surface-muted)] hover:bg-brand-50 dark:hover:bg-brand-600/15"
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
         <button onClick={() => setOpenPanel(openPanel === "comments" ? null : "comments")} className={btn} title="Comments">
           <MessageSquare size={18} />
         </button>
@@ -452,7 +572,12 @@ export default function WhiteboardEditor() {
           gridModeEnabled={gridMode}
           onChange={handleChange}
           onPointerUpdate={handlePointer}
-          initialData={{ appState: { viewBackgroundColor: "#ffffff" } }}
+          initialData={{
+            appState: {
+              viewBackgroundColor: "#ffffff",
+              currentItemStrokeWidth: strokeWidth,
+            },
+          }}
           UIOptions={{
             canvasActions: {
               // One export path (our menu); hide Excalidraw's own save/load/export.

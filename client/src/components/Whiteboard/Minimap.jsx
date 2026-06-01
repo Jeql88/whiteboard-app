@@ -127,9 +127,19 @@ export default function Minimap({ apiRef }) {
             ctx.closePath();
             ctx.stroke();
             break;
-          case "text":
+          case "text": {
+            // Render the actual text, scaled, so the minimap is readable.
+            const fs = Math.max((el.fontSize || 16) * scale, 5);
+            ctx.font = `${fs}px sans-serif`;
+            ctx.textBaseline = "top";
+            const lines = String(el.text || "").split("\n");
+            lines.forEach((line, i) => {
+              ctx.fillText(line.slice(0, 60), mx, my + i * fs * 1.15);
+            });
+            break;
+          }
           case "image":
-            // Solid-ish block for content elements.
+            // Translucent block stands in for image content.
             ctx.globalAlpha = 0.5;
             ctx.fillRect(mx, my, Math.max(w, 1.5), Math.max(h, 1.5));
             ctx.globalAlpha = 1;

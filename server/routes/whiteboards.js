@@ -5,6 +5,7 @@ const express = require("express");
 const { ObjectId } = require("mongodb");
 const { authMiddleware } = require("../middleware/auth");
 const { getCollections } = require("../db");
+const { getActiveBoardIds } = require("../socket/presence");
 
 // Unverified users may own at most this many boards (incentive to verify).
 const UNVERIFIED_BOARD_LIMIT = 5;
@@ -21,6 +22,12 @@ module.exports = function whiteboardRoutes(io) {
       .sort({ updatedAt: -1 })
       .toArray();
     res.json(boards);
+  });
+
+  // Board ids with someone currently present (for the dashboard "live" badge).
+  // Registered before /:id so it isn't captured as an id param.
+  router.get("/active", authMiddleware, (req, res) => {
+    res.json({ active: getActiveBoardIds() });
   });
 
   // Create a board. Unverified users are capped at UNVERIFIED_BOARD_LIMIT.

@@ -12,6 +12,16 @@ export async function getWhiteboards() {
   return res.json();
 }
 
+export async function getActiveBoards() {
+  try {
+    const res = await fetch(`${WB}/active`, { headers: authHeaders() });
+    const data = await res.json();
+    return Array.isArray(data.active) ? data.active : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function createWhiteboard(name) {
   const res = await fetch(WB, {
     method: "POST",
