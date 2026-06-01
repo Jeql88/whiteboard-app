@@ -1,10 +1,11 @@
-// Scene synchronization: element-level merge (not last-write-wins).
+// Scene synchronization: element-level merge, serialized per board.
 //
 // Each board has one snapshot document in `scenes`. Clients emit their full
-// element list, but we MERGE incoming elements with the stored ones by element
-// id, keeping the higher Excalidraw `version` per id. This means concurrent
-// edits to different elements both survive, and same-element conflicts resolve
-// deterministically — instead of one client's whole scene clobbering another's.
+// element list; we MERGE by element id keeping the higher Excalidraw `version`
+// (deletions included — a deleted element with a higher version wins, so
+// deletions stick and don't "come back"). The read-merge-write is serialized
+// per board with an in-process lock so concurrent updates can't lose the higher
+// version via a race (valid on a single instance; would need Redis to scale).
 
 const { ObjectId } = require("mongodb");
 const { getCollections } = require("../db");
@@ -13,8 +14,8 @@ function sanitizeAppState(appState = {}) {
   return { viewBackgroundColor: appState.viewBackgroundColor || "#ffffff" };
 }
 
-// Merge two element arrays by id, keeping the higher version (tie-break on
-// versionNonce). Deleted elements are kept as tombstones so deletions converge.
+// Merge by id, higher version wins (tie-break versionNonce). Deleted elements
+// are kept as tombstones so a delete propagates and persists.
 function mergeElements(existing = [], incoming = []) {
   const byId = new Map();
   for (const el of existing) if (el && el.id) byId.set(el.id, el);
@@ -34,6 +35,19 @@ function mergeElements(existing = [], incoming = []) {
   return Array.from(byId.values());
 }
 
+// --- Per-board serialization (in-process mutex) ---
+const boardLocks = new Map(); // whiteboardId -> Promise chain tail
+function withBoardLock(whiteboardId, task) {
+  const prev = boardLocks.get(whiteboardId) || Promise.resolve();
+  const next = prev.then(task, task); // run task regardless of prior outcome
+  // Keep the chain but don't let rejections break future tasks.
+  boardLocks.set(
+    whiteboardId,
+    next.catch(() => {})
+  );
+  return next;
+}
+
 async function loadScene(whiteboardId) {
   const { scenes } = getCollections();
   const doc = await scenes.findOne({ whiteboardId });
@@ -50,37 +64,35 @@ function registerSceneHandlers(io, socket) {
 
   socket.on("sceneUpdate", async ({ whiteboardId, elements, appState, files }) => {
     if (!whiteboardId) return;
-
     const cleanAppState = sanitizeAppState(appState);
     const userId = socket.user.userId;
 
-    // Merge with whatever is currently stored so a stale client can't drop
-    // elements it never saw.
-    const existing = await scenes.findOne({ whiteboardId });
-    const mergedElements = mergeElements(existing?.elements, elements || []);
-    const mergedFiles = { ...(existing?.files || {}), ...(files || {}) };
-
-    await scenes.updateOne(
-      { whiteboardId },
-      {
-        $set: {
-          whiteboardId,
-          elements: mergedElements,
-          appState: cleanAppState,
-          files: mergedFiles,
-          updatedAt: new Date(),
-          updatedBy: userId,
+    const merged = await withBoardLock(whiteboardId, async () => {
+      const existing = await scenes.findOne({ whiteboardId });
+      const mergedElements = mergeElements(existing?.elements, elements || []);
+      const mergedFiles = { ...(existing?.files || {}), ...(files || {}) };
+      await scenes.updateOne(
+        { whiteboardId },
+        {
+          $set: {
+            whiteboardId,
+            elements: mergedElements,
+            appState: cleanAppState,
+            files: mergedFiles,
+            updatedAt: new Date(),
+            updatedBy: userId,
+          },
         },
-      },
-      { upsert: true }
-    );
+        { upsert: true }
+      );
+      return { elements: mergedElements, files: mergedFiles };
+    });
 
-    // Broadcast the MERGED scene to everyone else so all clients converge on
-    // the same authoritative set (not just the sender's view).
+    // Broadcast the MERGED scene so all clients converge on the same set.
     socket.to(whiteboardId).emit("sceneUpdate", {
-      elements: mergedElements,
+      elements: merged.elements,
       appState: cleanAppState,
-      files: mergedFiles,
+      files: merged.files,
     });
 
     try {

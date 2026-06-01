@@ -16,6 +16,7 @@ import {
   FileImage,
   FileText,
   Trash2,
+  Maximize,
 } from "lucide-react";
 
 import { API_BASE } from "../../api/config";
@@ -74,6 +75,7 @@ export default function WhiteboardEditor() {
   const [openPanel, setOpenPanel] = useState(null); // 'comments' | 'chat' | null
   const [copied, setCopied] = useState(false);
   const [socket, setSocket] = useState(null);
+  const [disconnected, setDisconnected] = useState(false);
   const [gridMode, setGridMode] = useState(
     () => localStorage.getItem("wb-grid") === "1"
   );
@@ -91,15 +93,24 @@ export default function WhiteboardEditor() {
   const cursorThrottle = useRef(0);
   const remoteCursors = useRef(new Map()); // socketId -> collaborator pointer
 
-  // Identity: logged-in user or a stable guest id for shared links.
+  // Identity: logged-in user, or a stable guest id persisted for this tab so a
+  // guest keeps ONE identity across reloads/reconnects (avoids duplicate
+  // avatars and lets their cursor stay consistent).
   const identity = useRef(null);
   if (!identity.current) {
     const fromToken = getUserFromToken();
-    identity.current = fromToken || {
-      userId: `guest-${Math.random().toString(36).slice(2, 10)}`,
-      username: "Guest",
-      token: null,
-    };
+    if (fromToken) {
+      identity.current = fromToken;
+    } else {
+      let gid = sessionStorage.getItem("wb-guest-id");
+      if (!gid) {
+        gid = `guest-${(crypto.randomUUID?.() || `${performance.now()}`)
+          .toString()
+          .slice(0, 8)}`;
+        sessionStorage.setItem("wb-guest-id", gid);
+      }
+      identity.current = { userId: gid, username: "Guest", token: null };
+    }
   }
   const me = identity.current;
   const isGuest = !me.token;
@@ -111,7 +122,10 @@ export default function WhiteboardEditor() {
       : io(API_BASE);
     setSocket(s);
 
+    // Fires on first connect AND every reconnect — so we re-join the room,
+    // re-announce presence, and re-hydrate the scene after a drop.
     s.on("connect", () => {
+      setDisconnected(false);
       s.emit("joinWhiteboard", whiteboardId);
       s.emit("presence", {
         whiteboardId,
@@ -119,6 +133,7 @@ export default function WhiteboardEditor() {
         username: me.username,
       });
     });
+    s.on("disconnect", () => setDisconnected(true));
 
     // Apply a remote scene, reconciling with the current local elements so we
     // never drop a local element the broadcast didn't include yet. The
@@ -127,7 +142,9 @@ export default function WhiteboardEditor() {
     const applyRemoteScene = (scene) => {
       if (!scene || !apiRef.current) return;
       isApplyingRemote.current = true;
-      const local = apiRef.current.getSceneElements();
+      // Include deleted tombstones so an incoming delete (higher version) wins
+      // the reconcile and the element is removed locally — not resurrected.
+      const local = apiRef.current.getSceneElementsIncludingDeleted();
       apiRef.current.updateScene({
         elements: reconcileElements(local, scene.elements || []),
         appState: { viewBackgroundColor: scene.appState?.viewBackgroundColor },
@@ -176,9 +193,14 @@ export default function WhiteboardEditor() {
       if (isApplyingRemote.current || !socket) return;
       clearTimeout(sceneTimer.current);
       sceneTimer.current = setTimeout(() => {
+        // Emit including-deleted tombstones at flush time so deletions
+        // propagate and stick (the merge keeps the higher version per id).
+        const toSend = apiRef.current
+          ? apiRef.current.getSceneElementsIncludingDeleted()
+          : elements;
         socket.emit("sceneUpdate", {
           whiteboardId,
-          elements,
+          elements: toSend,
           appState: { viewBackgroundColor: appState?.viewBackgroundColor },
           files: files || {},
         });
@@ -328,17 +350,31 @@ export default function WhiteboardEditor() {
   captureRef.current = captureThumbnail;
 
   const clearCanvas = () => {
-    if (!apiRef.current) return;
-    apiRef.current.updateScene({ elements: [] });
+    const api = apiRef.current;
+    if (!api) return;
+    // Mark every element deleted (bump version) so the clear propagates and
+    // sticks under the merge — replacing with [] would let peers resurrect them.
+    const cleared = api.getSceneElementsIncludingDeleted().map((el) => ({
+      ...el,
+      isDeleted: true,
+      version: (el.version ?? 0) + 1,
+    }));
+    api.updateScene({ elements: cleared });
+  };
+
+  // Zoom out / frame all content — the reliable "see everything" control,
+  // especially useful on mobile where pinch-zoom-out is limited.
+  const zoomToFit = () => {
+    apiRef.current?.scrollToContent(undefined, { fitToViewport: true });
   };
 
   const btn =
     "inline-flex items-center justify-center h-9 w-9 rounded-lg text-[var(--surface-muted)] hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-600/15 transition-colors";
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[var(--surface-bg)]">
+    <div className="flex h-dvh w-screen flex-col overflow-hidden bg-[var(--surface-bg)]">
       {/* Top bar */}
-      <header className="z-10 flex items-center gap-2 border-b border-[var(--surface-border)] bg-[var(--surface-card)] px-3 py-2">
+      <header className="z-10 flex shrink-0 items-center gap-1.5 border-b border-[var(--surface-border)] bg-[var(--surface-card)] px-2 py-2 sm:gap-2 sm:px-3">
         <button
           onClick={() => navigate("/whiteboards")}
           className={btn}
@@ -370,18 +406,20 @@ export default function WhiteboardEditor() {
 
         <div className="flex-1" />
 
-        {/* Presence avatars */}
+        {/* Presence avatars (deduped by userId, defensive against dup sockets) */}
         <div className="mr-1 flex -space-x-2">
-          {collaborators.slice(0, 5).map((u) => (
-            <div
-              key={u.socketId}
-              title={u.username}
-              className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--surface-card)] text-[11px] font-semibold text-white"
-              style={{ background: getColorForName(u.username) }}
-            >
-              {getInitials(u.username)}
-            </div>
-          ))}
+          {[...new Map(collaborators.map((u) => [u.userId, u])).values()]
+            .slice(0, 5)
+            .map((u) => (
+              <div
+                key={u.userId}
+                title={u.username}
+                className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--surface-card)] text-[11px] font-semibold text-white"
+                style={{ background: getColorForName(u.username) }}
+              >
+                {getInitials(u.username)}
+              </div>
+            ))}
         </div>
 
         <button onClick={() => setOpenPanel(openPanel === "comments" ? null : "comments")} className={btn} title="Comments">
@@ -403,6 +441,11 @@ export default function WhiteboardEditor() {
 
       {/* Canvas */}
       <div className="relative flex-1">
+        {disconnected && (
+          <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full bg-amber-500/95 px-3 py-1 text-xs font-medium text-white shadow-lg">
+            Reconnecting…
+          </div>
+        )}
         <Excalidraw
           excalidrawAPI={(api) => (apiRef.current = api)}
           theme={theme}
@@ -430,6 +473,9 @@ export default function WhiteboardEditor() {
               Export PDF
             </MainMenu.Item>
             <MainMenu.Separator />
+            <MainMenu.Item onSelect={zoomToFit} icon={<Maximize size={16} />}>
+              Zoom to fit
+            </MainMenu.Item>
             <MainMenu.Item onSelect={toggleGrid} icon={<Grid3x3 size={16} />}>
               {gridMode ? "Hide grid" : "Show grid"}
             </MainMenu.Item>

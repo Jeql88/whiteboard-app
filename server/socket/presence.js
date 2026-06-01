@@ -7,12 +7,14 @@
 const whiteboardUsers = {}; // { [whiteboardId]: [{ userId, username, socketId }] }
 
 function registerPresenceHandlers(io, socket) {
-  // Announce / refresh this user's presence on a board.
+  // Announce / refresh this user's presence on a board. Dedupe by userId so a
+  // user who reconnects or opens multiple tabs shows as ONE avatar (keep the
+  // latest socket). Guests get a per-socket id so they remain distinct.
   socket.on("presence", ({ whiteboardId, userId, username }) => {
     if (!whiteboardId) return;
     if (!whiteboardUsers[whiteboardId]) whiteboardUsers[whiteboardId] = [];
     whiteboardUsers[whiteboardId] = whiteboardUsers[whiteboardId].filter(
-      (u) => u.socketId !== socket.id
+      (u) => u.socketId !== socket.id && u.userId !== userId
     );
     whiteboardUsers[whiteboardId].push({ userId, username, socketId: socket.id });
     io.to(whiteboardId).emit("whiteboardUsers", whiteboardUsers[whiteboardId]);
