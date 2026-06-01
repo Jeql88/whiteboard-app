@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { login } from "../../api/auth";
 import AuthLayout from "./AuthLayout";
 
@@ -11,7 +11,6 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,13 +20,15 @@ export default function Login() {
       const res = await login(username, password);
       if (res.token) {
         localStorage.setItem("token", res.token);
-        navigate("/whiteboards");
+        // Full navigation so App re-reads the token from localStorage and the
+        // authed routes render reliably (matches Register's behavior).
+        window.location.assign("/whiteboards");
       } else {
         setError(res.error || "Login failed");
+        setLoading(false);
       }
     } catch {
       setError("Something went wrong. Please try again.");
-    } finally {
       setLoading(false);
     }
   };

@@ -8,12 +8,41 @@ function authHeaders(extra = {}) {
 }
 
 async function postJson(path, body, headers = {}) {
-  const res = await fetch(`${AUTH}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
-  return res.json();
+  // Render's free tier sleeps after inactivity; the first request can take
+  // ~30-60s to wake. Use a generous timeout so the UI can show a clear error
+  // instead of hanging forever, and tolerate non-JSON error responses (e.g.
+  // a 502/503 HTML page returned while the server is still starting up).
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch(`${AUTH}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { error: `Server error (${res.status}). Please try again.` };
+    }
+    if (!res.ok && !data.error) {
+      data.error = `Request failed (${res.status})`;
+    }
+    return data;
+  } catch (err) {
+    if (err.name === "AbortError") {
+      return {
+        error:
+          "The server took too long to respond (it may be waking up). Please try again in a moment.",
+      };
+    }
+    return { error: "Network error. Please check your connection and retry." };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function login(username, password) {
