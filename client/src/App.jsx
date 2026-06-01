@@ -7,6 +7,10 @@ import {
 } from "react-router-dom";
 import Login from "./components/Auth/Login";
 import Register from "./components/Auth/Register";
+import ForgotPassword from "./components/Auth/ForgotPassword";
+import ResetPassword from "./components/Auth/ResetPassword";
+import VerifyEmail from "./components/Auth/VerifyEmail";
+import AccountSettings from "./components/Auth/AccountSettings";
 import WhiteboardHome from "./components/Whiteboard/WhiteboardHome";
 import { ThemeProvider } from "./theme/ThemeContext";
 
@@ -33,9 +37,16 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot" element={<ForgotPassword />} />
+          <Route path="/reset" element={<ResetPassword />} />
+          <Route path="/verify" element={<VerifyEmail />} />
           <Route
             path="/whiteboards"
             element={token ? <WhiteboardHome /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/account"
+            element={token ? <AccountSettings /> : <Navigate to="/login" />}
           />
           <Route
             path="/whiteboard/:id"

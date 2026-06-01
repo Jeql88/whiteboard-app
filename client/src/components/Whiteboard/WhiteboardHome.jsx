@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { Plus, Search, LogOut } from "lucide-react";
+import { useLocation } from "react-router-dom";
+import { Plus, Search, Loader2 } from "lucide-react";
 import {
   getWhiteboards,
   createWhiteboard,
 } from "../../api/whiteboard";
 import WhiteboardCard from "./WhiteBoardCard.jsx";
 import ThemeToggle from "../ThemeToggle";
+import UserMenu from "../UserMenu";
+import VerifyBanner from "../VerifyBanner";
 
 function getUserIdFromToken() {
   const token = localStorage.getItem("token");
@@ -26,19 +28,22 @@ export default function WhiteboardHome() {
   const [name, setName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [showPopup, setShowPopup] = useState(false);
+  const [createError, setCreateError] = useState("");
   const [showAllOwned, setShowAllOwned] = useState(false);
   const [showAllShared, setShowAllShared] = useState(false);
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
   const location = useLocation();
 
   const currentUserId = getUserIdFromToken();
 
   useEffect(() => {
-    getWhiteboards().then((data) => {
-      const arr = Array.isArray(data) ? data : [];
-      setWhiteboards(arr);
-      setFilteredBoards(arr);
-    });
+    getWhiteboards()
+      .then((data) => {
+        const arr = Array.isArray(data) ? data : [];
+        setWhiteboards(arr);
+        setFilteredBoards(arr);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -96,11 +101,14 @@ export default function WhiteboardHome() {
   };
 
   const handleCreate = async () => {
+    setCreateError("");
     const res = await createWhiteboard(name);
     if (res._id) {
       setWhiteboards((prev) => [res, ...prev]);
       setName("");
       setShowPopup(false);
+    } else {
+      setCreateError(res.error || "Could not create whiteboard");
     }
   };
 
@@ -125,22 +133,21 @@ export default function WhiteboardHome() {
   return (
     <div className="min-h-screen bg-[var(--surface-bg)]">
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--surface-border)] bg-[var(--surface-card)] px-6 py-3">
-        <h1 className="text-lg font-bold text-[var(--surface-text)]">
-          Your Whiteboards
-        </h1>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
+            W
+          </div>
+          <h1 className="text-lg font-extrabold tracking-tight text-[var(--surface-text)]">
+            Whitebored
+          </h1>
+        </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <button
-            onClick={() => {
-              localStorage.removeItem("token");
-              navigate("/login");
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-border)] px-3 py-1.5 text-sm font-medium text-[var(--surface-text)] hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
-          >
-            <LogOut size={16} /> Logout
-          </button>
+          <UserMenu />
         </div>
       </header>
+
+      <VerifyBanner />
 
       <main className="mx-auto max-w-5xl px-6 py-8">
         {/* Search */}
@@ -158,6 +165,14 @@ export default function WhiteboardHome() {
           />
         </div>
 
+        {loading && (
+          <div className="flex items-center justify-center gap-2 py-16 text-[var(--surface-muted)]">
+            <Loader2 className="animate-spin" size={18} /> Loading your boards…
+          </div>
+        )}
+
+        {!loading && (
+        <>
         {/* Owned */}
         <section className="mb-10">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-600">
@@ -202,6 +217,8 @@ export default function WhiteboardHome() {
           </div>
           {showMoreBtn(showAllShared, setShowAllShared, sharedBoards.length)}
         </section>
+        </>
+        )}
       </main>
 
       {/* Create modal */}
@@ -223,8 +240,13 @@ export default function WhiteboardHome() {
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
               placeholder="e.g. Sprint planning"
-              className="mb-4 w-full rounded-lg border border-[var(--surface-border)] bg-transparent px-3 py-2 text-sm text-[var(--surface-text)] outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+              className="mb-3 w-full rounded-lg border border-[var(--surface-border)] bg-transparent px-3 py-2 text-sm text-[var(--surface-text)] outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
             />
+            {createError && (
+              <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                {createError} <a href="/account" className="font-semibold underline">Verify now</a>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowPopup(false)}

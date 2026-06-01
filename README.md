@@ -1,4 +1,4 @@
-# Collaborative Whiteboard
+# Whitebored
 
 A real-time, multi-user collaborative whiteboard. Draw together on an infinite
 canvas with live cursors, presence, comments, and chat — changes sync across

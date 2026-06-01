@@ -93,7 +93,7 @@ export default function WhiteboardCard({ whiteboard, onDelete, onRename }) {
       </div>
 
       {editing && (
-        <Modal onClose={() => setEditing(false)} title="Rename Whiteboard">
+        <Modal onClose={() => setEditing(false)} title="Rename board">
           <input
             autoFocus
             value={newName}
@@ -112,7 +112,7 @@ export default function WhiteboardCard({ whiteboard, onDelete, onRename }) {
       {showDeleteConfirm && (
         <Modal
           onClose={() => setShowDeleteConfirm(false)}
-          title="Delete Whiteboard"
+          title="Delete board"
         >
           <p className="mb-4 text-sm text-[var(--surface-muted)]">
             Are you sure you want to delete{" "}

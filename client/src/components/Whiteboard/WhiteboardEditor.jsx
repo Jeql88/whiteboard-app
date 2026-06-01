@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
-import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
+import { Excalidraw, MainMenu, exportToBlob } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import jsPDF from "jspdf";
 import {
@@ -13,6 +13,10 @@ import {
   Check,
   Sun,
   Moon,
+  Grid3x3,
+  FileImage,
+  FileText,
+  Trash2,
 } from "lucide-react";
 
 import { API_BASE } from "../../api/config";
@@ -21,6 +25,8 @@ import { useTheme } from "../../theme/ThemeContext";
 import { getColorForName, getInitials } from "../../utils/userColor";
 import CommentsSidebar from "./CommentsSidebar";
 import ChatBox from "../Chatbox";
+import Minimap from "./Minimap";
+import UserMenu from "../UserMenu";
 
 // Decode the JWT payload (userId/username) without verifying — display only.
 function getUserFromToken() {
@@ -48,6 +54,15 @@ export default function WhiteboardEditor() {
   const [copied, setCopied] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [socket, setSocket] = useState(null);
+  const [gridMode, setGridMode] = useState(
+    () => localStorage.getItem("wb-grid") === "1"
+  );
+
+  const toggleGrid = () =>
+    setGridMode((v) => {
+      localStorage.setItem("wb-grid", v ? "0" : "1");
+      return !v;
+    });
 
   const apiRef = useRef(null); // excalidrawAPI
   const isApplyingRemote = useRef(false);
@@ -244,6 +259,11 @@ export default function WhiteboardEditor() {
     }
   };
 
+  const clearCanvas = () => {
+    if (!apiRef.current) return;
+    apiRef.current.updateScene({ elements: [] });
+  };
+
   const btn =
     "inline-flex items-center justify-center h-9 w-9 rounded-lg text-[var(--surface-muted)] hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-600/15 transition-colors";
 
@@ -254,17 +274,23 @@ export default function WhiteboardEditor() {
         <button
           onClick={() => navigate("/whiteboards")}
           className={btn}
-          title="Back to dashboard"
+          title="Back to Whitebored"
         >
           <ArrowLeft size={18} />
         </button>
+        <div
+          className="hidden h-7 w-7 items-center justify-center rounded-lg bg-brand-600 text-xs font-bold text-white sm:inline-flex"
+          title="Whitebored"
+        >
+          W
+        </div>
 
         <input
           value={boardName}
           onChange={(e) => setBoardName(e.target.value)}
           onBlur={commitName}
           disabled={isGuest}
-          className="max-w-[220px] rounded-md bg-transparent px-2 py-1 text-sm font-semibold text-[var(--surface-text)] outline-none focus:bg-brand-50 dark:focus:bg-brand-600/10 disabled:opacity-70"
+          className="w-28 max-w-[220px] rounded-md bg-transparent px-2 py-1 text-sm font-semibold text-[var(--surface-text)] outline-none focus:bg-brand-50 sm:w-auto dark:focus:bg-brand-600/10 disabled:opacity-70"
           title={isGuest ? "Sign in to rename" : "Rename board"}
         />
 
@@ -297,7 +323,7 @@ export default function WhiteboardEditor() {
           <MessagesSquare size={18} />
         </button>
 
-        <div className="relative">
+        <div className="relative hidden sm:block">
           <button onClick={() => setExportOpen((v) => !v)} className={btn} title="Export">
             <Download size={18} />
           </button>
@@ -313,12 +339,20 @@ export default function WhiteboardEditor() {
           )}
         </div>
 
-        <button onClick={copyLink} className={btn} title="Copy shareable link">
+        <button onClick={copyLink} className={`${btn} hidden sm:inline-flex`} title="Copy shareable link">
           {copied ? <Check size={18} className="text-green-500" /> : <Link2 size={18} />}
+        </button>
+        <button
+          onClick={toggleGrid}
+          className={`${btn} ${gridMode ? "bg-brand-50 text-brand-600 dark:bg-brand-600/15" : ""}`}
+          title={gridMode ? "Hide grid" : "Show grid"}
+        >
+          <Grid3x3 size={18} />
         </button>
         <button onClick={toggleTheme} className={btn} title="Toggle theme">
           {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
         </button>
+        {!isGuest && <UserMenu />}
       </header>
 
       {/* Canvas */}
@@ -326,10 +360,48 @@ export default function WhiteboardEditor() {
         <Excalidraw
           excalidrawAPI={(api) => (apiRef.current = api)}
           theme={theme}
+          gridModeEnabled={gridMode}
           onChange={handleChange}
           onPointerUpdate={handlePointer}
           initialData={{ appState: { viewBackgroundColor: "#ffffff" } }}
-        />
+          UIOptions={{
+            canvasActions: {
+              // One export path (our menu); hide Excalidraw's own save/load/export.
+              export: false,
+              saveToActiveFile: false,
+              loadScene: false,
+              toggleTheme: false,
+            },
+          }}
+        >
+          {/* Custom menu fully replaces the default — removes excalidraw.com
+              promo/social links and consolidates our actions. */}
+          <MainMenu>
+            <MainMenu.Item onSelect={() => doExport("png")} icon={<FileImage size={16} />}>
+              Export PNG
+            </MainMenu.Item>
+            <MainMenu.Item onSelect={() => doExport("pdf")} icon={<FileText size={16} />}>
+              Export PDF
+            </MainMenu.Item>
+            <MainMenu.Separator />
+            <MainMenu.Item onSelect={toggleGrid} icon={<Grid3x3 size={16} />}>
+              {gridMode ? "Hide grid" : "Show grid"}
+            </MainMenu.Item>
+            <MainMenu.Item onSelect={clearCanvas} icon={<Trash2 size={16} />}>
+              Clear canvas
+            </MainMenu.Item>
+            <MainMenu.Separator />
+            <MainMenu.Item
+              onSelect={() => navigate("/whiteboards")}
+              icon={<ArrowLeft size={16} />}
+            >
+              Back to dashboard
+            </MainMenu.Item>
+            <MainMenu.DefaultItems.ChangeCanvasBackground />
+          </MainMenu>
+        </Excalidraw>
+
+        <Minimap apiRef={apiRef} theme={theme} />
 
         {openPanel === "comments" && (
           <CommentsSidebar

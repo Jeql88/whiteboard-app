@@ -6,6 +6,9 @@ const { ObjectId } = require("mongodb");
 const { authMiddleware } = require("../middleware/auth");
 const { getCollections } = require("../db");
 
+// Unverified users may own at most this many boards (incentive to verify).
+const UNVERIFIED_BOARD_LIMIT = 5;
+
 module.exports = function whiteboardRoutes(io) {
   const router = express.Router();
 
@@ -20,17 +23,26 @@ module.exports = function whiteboardRoutes(io) {
     res.json(boards);
   });
 
-  // Create a board.
+  // Create a board. Unverified users are capped at UNVERIFIED_BOARD_LIMIT.
   router.post("/", authMiddleware, async (req, res) => {
-    const { whiteboards } = getCollections();
+    const { whiteboards, users } = getCollections();
+    const userId = req.user.userId;
+
+    const user = await users.findOne({ _id: new ObjectId(userId) });
+    if (!user?.emailVerified) {
+      const owned = await whiteboards.countDocuments({ userId });
+      if (owned >= UNVERIFIED_BOARD_LIMIT) {
+        return res.status(403).json({
+          error: `Verify your email to create more than ${UNVERIFIED_BOARD_LIMIT} whiteboards.`,
+          code: "VERIFY_REQUIRED",
+          limit: UNVERIFIED_BOARD_LIMIT,
+        });
+      }
+    }
+
     const { name } = req.body;
     const now = new Date();
-    const whiteboard = {
-      name,
-      userId: req.user.userId,
-      createdAt: now,
-      updatedAt: now,
-    };
+    const whiteboard = { name, userId, createdAt: now, updatedAt: now };
     const result = await whiteboards.insertOne(whiteboard);
     res.json({ _id: result.insertedId, ...whiteboard });
   });

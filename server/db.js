@@ -29,6 +29,13 @@ async function connectDB() {
   // One snapshot doc per board — enforce + speed up lookups by whiteboardId.
   await collections.scenes.createIndex({ whiteboardId: 1 }, { unique: true });
 
+  // Email is the reset identifier — unique when present. `sparse` allows
+  // pre-existing accounts that have no email yet.
+  await collections.users.createIndex(
+    { email: 1 },
+    { unique: true, sparse: true }
+  );
+
   console.log(`[db] Connected to MongoDB database "${DB_NAME}"`);
 }
 
