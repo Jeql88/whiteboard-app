@@ -1,16 +1,24 @@
+import { useState } from "react";
 import ThemeToggle from "../ThemeToggle";
 
 // Full-bleed splash background with a floating, elevated auth card on top.
-// The background image lives at /background.jpg (client/public). If it's
-// missing the page still renders cleanly on the token background color.
+// The image is rendered as an <img> and faded in only once fully decoded, so
+// there's no progressive top-to-bottom paint. The token background color shows
+// underneath until then (and if the image is missing).
 export default function AuthLayout({ title, subtitle, children, footer }) {
+  const [bgLoaded, setBgLoaded] = useState(false);
+
   return (
-    <div className="relative flex min-h-screen items-center justify-center px-4">
-      {/* Splash image */}
-      <div
-        className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: "url('/background.jpg')" }}
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[var(--surface-bg)] px-4">
+      {/* Splash image — fades in on load */}
+      <img
+        src="/background.jpg"
+        alt=""
         aria-hidden
+        onLoad={() => setBgLoaded(true)}
+        className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${
+          bgLoaded ? "opacity-100" : "opacity-0"
+        }`}
       />
       {/* Theme-aware scrim for contrast: light wash in light mode, darken in dark */}
       <div className="absolute inset-0 bg-white/30 dark:bg-slate-950/65" aria-hidden />
