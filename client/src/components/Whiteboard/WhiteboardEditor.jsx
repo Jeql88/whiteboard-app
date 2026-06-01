@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   MessageSquare,
   MessagesSquare,
-  Download,
   Link2,
   Check,
   Sun,
@@ -20,7 +19,7 @@ import {
 } from "lucide-react";
 
 import { API_BASE } from "../../api/config";
-import { updateWhiteboard } from "../../api/whiteboard";
+import { updateWhiteboard, saveThumbnail } from "../../api/whiteboard";
 import { useTheme } from "../../theme/ThemeContext";
 import { getColorForName, getInitials } from "../../utils/userColor";
 import CommentsSidebar from "./CommentsSidebar";
@@ -40,8 +39,30 @@ function getUserFromToken() {
   }
 }
 
-const SCENE_DEBOUNCE_MS = 400;
+const SCENE_DEBOUNCE_MS = 250;
 const CURSOR_THROTTLE_MS = 50;
+
+// Merge incoming elements with the current local ones by id, keeping the higher
+// version. Prevents a remote update from dropping a local element the server
+// hasn't merged into its broadcast yet.
+function reconcileElements(local = [], incoming = []) {
+  const byId = new Map();
+  for (const el of local) if (el && el.id) byId.set(el.id, el);
+  for (const el of incoming) {
+    if (!el || !el.id) continue;
+    const prev = byId.get(el.id);
+    if (!prev) {
+      byId.set(el.id, el);
+      continue;
+    }
+    const pv = prev.version ?? 0;
+    const nv = el.version ?? 0;
+    if (nv > pv || (nv === pv && (el.versionNonce ?? 0) > (prev.versionNonce ?? 0))) {
+      byId.set(el.id, el);
+    }
+  }
+  return Array.from(byId.values());
+}
 
 export default function WhiteboardEditor() {
   const { id: whiteboardId } = useParams();
@@ -52,7 +73,6 @@ export default function WhiteboardEditor() {
   const [collaborators, setCollaborators] = useState([]); // presence avatars
   const [openPanel, setOpenPanel] = useState(null); // 'comments' | 'chat' | null
   const [copied, setCopied] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
   const [socket, setSocket] = useState(null);
   const [gridMode, setGridMode] = useState(
     () => localStorage.getItem("wb-grid") === "1"
@@ -67,6 +87,7 @@ export default function WhiteboardEditor() {
   const apiRef = useRef(null); // excalidrawAPI
   const isApplyingRemote = useRef(false);
   const sceneTimer = useRef(null);
+  const applyTimer = useRef(null);
   const cursorThrottle = useRef(0);
   const remoteCursors = useRef(new Map()); // socketId -> collaborator pointer
 
@@ -99,33 +120,29 @@ export default function WhiteboardEditor() {
       });
     });
 
-    // Initial hydration.
-    s.on("sceneInit", (scene) => {
+    // Apply a remote scene, reconciling with the current local elements so we
+    // never drop a local element the broadcast didn't include yet. The
+    // isApplyingRemote guard is cleared on a short timeout (not a microtask) so
+    // Excalidraw's resulting onChange is reliably suppressed and doesn't echo.
+    const applyRemoteScene = (scene) => {
       if (!scene || !apiRef.current) return;
       isApplyingRemote.current = true;
+      const local = apiRef.current.getSceneElements();
       apiRef.current.updateScene({
-        elements: scene.elements || [],
+        elements: reconcileElements(local, scene.elements || []),
         appState: { viewBackgroundColor: scene.appState?.viewBackgroundColor },
       });
       if (scene.files && Object.keys(scene.files).length) {
         apiRef.current.addFiles(Object.values(scene.files));
       }
-      queueMicrotask(() => (isApplyingRemote.current = false));
-    });
+      clearTimeout(applyTimer.current);
+      applyTimer.current = setTimeout(() => {
+        isApplyingRemote.current = false;
+      }, 80);
+    };
 
-    // Remote scene change.
-    s.on("sceneUpdate", (scene) => {
-      if (!apiRef.current) return;
-      isApplyingRemote.current = true;
-      apiRef.current.updateScene({
-        elements: scene.elements || [],
-        appState: { viewBackgroundColor: scene.appState?.viewBackgroundColor },
-      });
-      if (scene.files && Object.keys(scene.files).length) {
-        apiRef.current.addFiles(Object.values(scene.files));
-      }
-      queueMicrotask(() => (isApplyingRemote.current = false));
-    });
+    s.on("sceneInit", applyRemoteScene);
+    s.on("sceneUpdate", applyRemoteScene);
 
     // Remote cursors → Excalidraw collaborators Map.
     s.on("cursorUpdate", (p) => {
@@ -203,6 +220,19 @@ export default function WhiteboardEditor() {
     );
   }, [whiteboardId, isGuest]);
 
+  // Capture a thumbnail when leaving the board (unmount) and when the tab is
+  // hidden/closed, so the dashboard card shows the last screen the user saw.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") captureRef.current?.();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      captureRef.current?.();
+    };
+  }, []);
+
   const commitName = async () => {
     if (isGuest) return;
     try {
@@ -214,7 +244,6 @@ export default function WhiteboardEditor() {
 
   // --- Export ---
   const doExport = async (format) => {
-    setExportOpen(false);
     const api = apiRef.current;
     if (!api) return;
     const blob = await exportToBlob({
@@ -258,6 +287,45 @@ export default function WhiteboardEditor() {
       /* clipboard blocked */
     }
   };
+
+  // Snapshot the current scene to a small PNG data URL and persist it as the
+  // board's dashboard thumbnail ("last screen the user saw"). Best-effort,
+  // guests skipped (they can't own boards).
+  const captureThumbnail = async () => {
+    const api = apiRef.current;
+    if (!api || isGuest) return;
+    const elements = api.getSceneElements();
+    if (!elements.length) return;
+    try {
+      const blob = await exportToBlob({
+        elements,
+        appState: { ...api.getAppState(), exportBackground: true },
+        files: api.getFiles(),
+        mimeType: "image/jpeg",
+        quality: 0.6,
+        exportPadding: 24,
+        // Downscale: cap the longest side so the data URL stays small.
+        getDimensions: (w, h) => {
+          const max = 480;
+          const scale = Math.min(1, max / Math.max(w, h));
+          return { width: w * scale, height: h * scale, scale };
+        },
+      });
+      const dataUrl = await new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.readAsDataURL(blob);
+      });
+      if (typeof dataUrl === "string" && dataUrl.length < 200_000) {
+        await saveThumbnail(whiteboardId, dataUrl);
+      }
+    } catch {
+      /* non-critical */
+    }
+  };
+  // Keep a ref so the unmount cleanup calls the latest version.
+  const captureRef = useRef(captureThumbnail);
+  captureRef.current = captureThumbnail;
 
   const clearCanvas = () => {
     if (!apiRef.current) return;
@@ -323,31 +391,9 @@ export default function WhiteboardEditor() {
           <MessagesSquare size={18} />
         </button>
 
-        <div className="relative hidden sm:block">
-          <button onClick={() => setExportOpen((v) => !v)} className={btn} title="Export">
-            <Download size={18} />
-          </button>
-          {exportOpen && (
-            <div className="absolute right-0 top-11 z-20 w-40 overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-card)] shadow-lg">
-              <button onClick={() => doExport("png")} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-50 dark:hover:bg-brand-600/15">
-                Download PNG
-              </button>
-              <button onClick={() => doExport("pdf")} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-50 dark:hover:bg-brand-600/15">
-                Export as PDF
-              </button>
-            </div>
-          )}
-        </div>
-
+        {/* Export + grid live in the top-left Excalidraw menu (no duplicates here). */}
         <button onClick={copyLink} className={`${btn} hidden sm:inline-flex`} title="Copy shareable link">
           {copied ? <Check size={18} className="text-green-500" /> : <Link2 size={18} />}
-        </button>
-        <button
-          onClick={toggleGrid}
-          className={`${btn} ${gridMode ? "bg-brand-50 text-brand-600 dark:bg-brand-600/15" : ""}`}
-          title={gridMode ? "Hide grid" : "Show grid"}
-        >
-          <Grid3x3 size={18} />
         </button>
         <button onClick={toggleTheme} className={btn} title="Toggle theme">
           {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
@@ -401,7 +447,7 @@ export default function WhiteboardEditor() {
           </MainMenu>
         </Excalidraw>
 
-        <Minimap apiRef={apiRef} theme={theme} />
+        <Minimap apiRef={apiRef} />
 
         {openPanel === "comments" && (
           <CommentsSidebar

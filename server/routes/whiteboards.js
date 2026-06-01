@@ -72,6 +72,30 @@ module.exports = function whiteboardRoutes(io) {
     }
   });
 
+  // Update a board's thumbnail (a small PNG data URL = last-seen scene).
+  // Any editor (owner or collaborator) may set it. Capped to avoid bloat.
+  router.put("/:id/thumbnail", authMiddleware, async (req, res) => {
+    const { whiteboards } = getCollections();
+    const whiteboardId = req.params.id;
+    const userId = req.user.userId;
+    const { thumbnail } = req.body || {};
+    if (typeof thumbnail !== "string" || !thumbnail.startsWith("data:image/")) {
+      return res.status(400).json({ error: "Invalid thumbnail" });
+    }
+    if (thumbnail.length > 200_000) {
+      return res.status(413).json({ error: "Thumbnail too large" });
+    }
+    try {
+      await whiteboards.updateOne(
+        { _id: new ObjectId(whiteboardId), $or: [{ userId }, { editors: userId }] },
+        { $set: { thumbnail } }
+      );
+      res.json({ success: true });
+    } catch {
+      res.status(400).json({ error: "Could not save thumbnail" });
+    }
+  });
+
   // Delete a board + its scene snapshot (owner only).
   router.delete("/:id", authMiddleware, async (req, res) => {
     const { whiteboards, scenes } = getCollections();

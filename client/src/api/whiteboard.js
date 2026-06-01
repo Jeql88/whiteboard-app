@@ -42,6 +42,18 @@ export async function updateWhiteboard(id, name) {
   return res.json();
 }
 
+export async function saveThumbnail(id, thumbnail) {
+  try {
+    await fetch(`${WB}/${id}/thumbnail`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ thumbnail }),
+    });
+  } catch {
+    /* best-effort; thumbnail is non-critical */
+  }
+}
+
 export async function getComments(whiteboardId) {
   const res = await fetch(`${WB}/${whiteboardId}/comments`, {
     headers: authHeaders(),

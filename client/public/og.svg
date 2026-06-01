@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eff6ff"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- subtle whiteboard doodles -->
+  <g stroke="#bfdbfe" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.9">
+    <rect x="880" y="90" width="150" height="110" rx="14"/>
+    <circle cx="1060" cy="470" r="70"/>
+    <path d="M120 500 q60 -80 120 0 t120 0"/>
+    <path d="M980 250 l70 70 M1050 250 l-70 70"/>
+  </g>
+  <g fill="#dbeafe">
+    <circle cx="150" cy="120" r="26"/>
+    <circle cx="210" cy="150" r="14"/>
+  </g>
+
+  <!-- logo badge -->
+  <rect x="120" y="250" width="120" height="120" rx="28" fill="#2563eb"/>
+  <text x="180" y="312" text-anchor="middle" dominant-baseline="central"
+        font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif"
+        font-size="74" font-weight="800" fill="#ffffff">W</text>
+
+  <!-- wordmark + tagline -->
+  <text x="270" y="300" dominant-baseline="central"
+        font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif"
+        font-size="76" font-weight="800" fill="#0f172a">Whitebored</text>
+  <text x="272" y="362" dominant-baseline="central"
+        font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif"
+        font-size="34" font-weight="500" fill="#475569">Real-time collaborative whiteboard</text>
+
+  <!-- feature chips -->
+  <g font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="24" font-weight="600">
+    <g>
+      <rect x="122" y="430" width="220" height="56" rx="28" fill="#2563eb"/>
+      <text x="232" y="459" text-anchor="middle" dominant-baseline="central" fill="#ffffff">Live multi-user</text>
+    </g>
+    <g>
+      <rect x="358" y="430" width="180" height="56" rx="28" fill="#ffffff" stroke="#bfdbfe" stroke-width="2"/>
+      <text x="448" y="459" text-anchor="middle" dominant-baseline="central" fill="#1d4ed8">Infinite canvas</text>
+    </g>
+    <g>
+      <rect x="554" y="430" width="150" height="56" rx="28" fill="#ffffff" stroke="#bfdbfe" stroke-width="2"/>
+      <text x="629" y="459" text-anchor="middle" dominant-baseline="central" fill="#1d4ed8">WebSockets</text>
+    </g>
+  </g>
+</svg>

@@ -15,7 +15,7 @@ const W = 200;
 const H = 140;
 const PAD = 80; // world padding around content (scene units)
 
-export default function Minimap({ apiRef, theme }) {
+export default function Minimap({ apiRef }) {
   const canvasRef = useRef(null);
   const worldRef = useRef(null); // last computed world transform, for click mapping
   const [hasContent, setHasContent] = useState(false);
@@ -77,13 +77,18 @@ export default function Minimap({ apiRef, theme }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
 
-      const dark = theme === "dark";
-      ctx.fillStyle = dark ? "#0b1120" : "#ffffff";
+      // The minimap mirrors the board surface, which is light (its
+      // viewBackgroundColor is white). Keep it light even in dark UI mode so the
+      // user's strokes — typically dark — stay clearly visible. We only theme
+      // the surrounding chrome (border/shadow via the container), not the map.
+      const boardBg =
+        (apiRef.current.getAppState().viewBackgroundColor) || "#ffffff";
+      ctx.fillStyle = boardBg;
       ctx.fillRect(0, 0, W, H);
 
       // Draw each element in a way that reflects what it actually is, so the
       // map reads as a miniature of the board rather than a single grey blob.
-      const fallbackStroke = dark ? "#cbd5e1" : "#475569";
+      const fallbackStroke = "#475569";
       for (const el of elements) {
         const [mx, my] = toMap(el.x, el.y);
         const w = el.width * scale;
@@ -158,7 +163,7 @@ export default function Minimap({ apiRef, theme }) {
       stop = true;
       cancelAnimationFrame(raf);
     };
-  }, [apiRef, theme]);
+  }, [apiRef]);
 
   // Click/drag on the minimap → center the main canvas there.
   const navigateTo = (e) => {
@@ -181,7 +186,7 @@ export default function Minimap({ apiRef, theme }) {
 
   return (
     <div
-      className={`absolute bottom-4 right-4 z-20 overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-card)] shadow-lg transition-opacity duration-300 ${
+      className={`absolute bottom-4 right-4 z-20 hidden overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-card)] shadow-lg transition-opacity duration-300 sm:block ${
         hasContent ? "opacity-100" : "pointer-events-none opacity-0"
       }`}
     >

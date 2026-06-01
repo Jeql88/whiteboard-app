@@ -50,8 +50,17 @@ export default function WhiteboardCard({ whiteboard, onDelete, onRename }) {
         }}
         className="group relative flex h-36 cursor-pointer flex-col overflow-hidden rounded-card border border-[var(--surface-border)] bg-[var(--surface-card)] transition-shadow hover:shadow-md"
       >
-        <div className="flex flex-1 items-center justify-center bg-[var(--surface-bg)] text-[var(--surface-muted)]">
-          <FileText size={32} />
+        <div className="flex flex-1 items-center justify-center overflow-hidden bg-white text-[var(--surface-muted)]">
+          {whiteboard.thumbnail ? (
+            <img
+              src={whiteboard.thumbnail}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <FileText size={32} />
+          )}
         </div>
         <div className="border-t border-[var(--surface-border)] p-3">
           <div className="flex items-center gap-2">

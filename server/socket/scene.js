@@ -1,19 +1,37 @@
-// Scene synchronization: full-scene broadcast model.
+// Scene synchronization: element-level merge (not last-write-wins).
 //
-// Each board has exactly one snapshot document in the `scenes` collection.
-// On change, a client emits the entire scene; we upsert it and rebroadcast to
-// everyone else in the room. On join, we send the stored snapshot back.
+// Each board has one snapshot document in `scenes`. Clients emit their full
+// element list, but we MERGE incoming elements with the stored ones by element
+// id, keeping the higher Excalidraw `version` per id. This means concurrent
+// edits to different elements both survive, and same-element conflicts resolve
+// deterministically — instead of one client's whole scene clobbering another's.
 
 const { ObjectId } = require("mongodb");
 const { getCollections } = require("../db");
 
-// Strip appState down to what is safe to persist/share. The full Excalidraw
-// appState carries a runtime `collaborators` Map and viewport dimensions that
-// corrupt remote hydration, so we keep only the document-level background.
 function sanitizeAppState(appState = {}) {
-  return {
-    viewBackgroundColor: appState.viewBackgroundColor || "#ffffff",
-  };
+  return { viewBackgroundColor: appState.viewBackgroundColor || "#ffffff" };
+}
+
+// Merge two element arrays by id, keeping the higher version (tie-break on
+// versionNonce). Deleted elements are kept as tombstones so deletions converge.
+function mergeElements(existing = [], incoming = []) {
+  const byId = new Map();
+  for (const el of existing) if (el && el.id) byId.set(el.id, el);
+  for (const el of incoming) {
+    if (!el || !el.id) continue;
+    const prev = byId.get(el.id);
+    if (!prev) {
+      byId.set(el.id, el);
+      continue;
+    }
+    const pv = prev.version ?? 0;
+    const nv = el.version ?? 0;
+    if (nv > pv || (nv === pv && (el.versionNonce ?? 0) > (prev.versionNonce ?? 0))) {
+      byId.set(el.id, el);
+    }
+  }
+  return Array.from(byId.values());
 }
 
 async function loadScene(whiteboardId) {
@@ -30,21 +48,26 @@ async function loadScene(whiteboardId) {
 function registerSceneHandlers(io, socket) {
   const { scenes, whiteboards } = getCollections();
 
-  // Persist + rebroadcast a full scene update.
   socket.on("sceneUpdate", async ({ whiteboardId, elements, appState, files }) => {
     if (!whiteboardId) return;
 
     const cleanAppState = sanitizeAppState(appState);
     const userId = socket.user.userId;
 
+    // Merge with whatever is currently stored so a stale client can't drop
+    // elements it never saw.
+    const existing = await scenes.findOne({ whiteboardId });
+    const mergedElements = mergeElements(existing?.elements, elements || []);
+    const mergedFiles = { ...(existing?.files || {}), ...(files || {}) };
+
     await scenes.updateOne(
       { whiteboardId },
       {
         $set: {
           whiteboardId,
-          elements: elements || [],
+          elements: mergedElements,
           appState: cleanAppState,
-          files: files || {},
+          files: mergedFiles,
           updatedAt: new Date(),
           updatedBy: userId,
         },
@@ -52,14 +75,14 @@ function registerSceneHandlers(io, socket) {
       { upsert: true }
     );
 
-    // Rebroadcast to everyone in the room EXCEPT the sender (avoids echo loop).
+    // Broadcast the MERGED scene to everyone else so all clients converge on
+    // the same authoritative set (not just the sender's view).
     socket.to(whiteboardId).emit("sceneUpdate", {
-      elements: elements || [],
+      elements: mergedElements,
       appState: cleanAppState,
-      files: files || {},
+      files: mergedFiles,
     });
 
-    // Touch the board so the dashboard ordering + editor list stays fresh.
     try {
       await whiteboards.updateOne(
         { _id: new ObjectId(whiteboardId) },
@@ -71,4 +94,4 @@ function registerSceneHandlers(io, socket) {
   });
 }
 
-module.exports = { registerSceneHandlers, loadScene };
+module.exports = { registerSceneHandlers, loadScene, mergeElements };
