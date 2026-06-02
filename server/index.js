@@ -33,7 +33,7 @@ const io = new Server(server, {
 app.use(cors({ origin: corsOrigin, credentials: true }));
 
 // BetterAuth handler must come BEFORE express.json() — it reads the raw body itself.
-app.all("/api/auth/*", toNodeHandler(auth));
+app.all("/api/auth/*splat", toNodeHandler(auth));
 
 app.use(express.json({ limit: "10mb" }));
 
