@@ -79,33 +79,11 @@ export default function WhiteboardEditor() {
   const [gridMode, setGridMode] = useState(
     () => localStorage.getItem("wb-grid") === "1"
   );
-  const [strokeWidth, setStrokeWidth] = useState(
-    () => Number(localStorage.getItem("wb-stroke")) || 4
-  );
-
   const toggleGrid = () =>
     setGridMode((v) => {
       localStorage.setItem("wb-grid", v ? "0" : "1");
       return !v;
     });
-
-  // Brush thickness presets (wider than Excalidraw's built-in max). Sets the
-  // width for the next drawn element via appState.currentItemStrokeWidth.
-  const STROKE_PRESETS = [
-    { label: "S", value: 2 },
-    { label: "M", value: 4 },
-    { label: "L", value: 8 },
-    { label: "XL", value: 16 },
-    { label: "XXL", value: 28 },
-  ];
-  const pickStroke = (value) => {
-    setStrokeWidth(value);
-    localStorage.setItem("wb-stroke", String(value));
-    apiRef.current?.updateScene({
-      appState: { currentItemStrokeWidth: value },
-      captureUpdate: CaptureUpdateAction.NEVER,
-    });
-  };
 
   const apiRef = useRef(null); // excalidrawAPI
   const isApplyingRemote = useRef(false);
@@ -593,25 +571,7 @@ export default function WhiteboardEditor() {
             ))}
         </div>
 
-        {/* Brush thickness presets (wider than Excalidraw's built-in max) */}
-        <div className="mr-1 hidden items-center gap-0.5 rounded-lg border border-[var(--surface-border)] p-0.5 sm:flex">
-          {STROKE_PRESETS.map((s) => (
-            <button
-              key={s.value}
-              onClick={() => pickStroke(s.value)}
-              title={`Brush ${s.label} (${s.value}px)`}
-              className={`flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-[11px] font-semibold transition-colors ${
-                strokeWidth === s.value
-                  ? "bg-brand-600 text-white"
-                  : "text-[var(--surface-muted)] hover:bg-brand-50 dark:hover:bg-brand-600/15"
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-
-        <button onClick={() => setOpenPanel(openPanel === "comments" ? null : "comments")} className={btn} title="Comments">
+<button onClick={() => setOpenPanel(openPanel === "comments" ? null : "comments")} className={btn} title="Comments">
           <MessageSquare size={18} />
         </button>
         <button onClick={() => setOpenPanel(openPanel === "chat" ? null : "chat")} className={btn} title="Chat">
@@ -649,7 +609,6 @@ export default function WhiteboardEditor() {
           initialData={{
             appState: {
               viewBackgroundColor: "#ffffff",
-              currentItemStrokeWidth: strokeWidth,
             },
           }}
           UIOptions={{
