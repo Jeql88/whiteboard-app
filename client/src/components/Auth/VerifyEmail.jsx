@@ -1,33 +1,17 @@
-import React, { useEffect, useState } from "react";
-import { useSearchParams, Link, useNavigate } from "react-router-dom";
-import { verifyEmail } from "../../api/auth";
+import React from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useSession } from "../../lib/auth-client";
 import AuthLayout from "./AuthLayout";
 
 export default function VerifyEmail() {
-  const [params] = useSearchParams();
   const navigate = useNavigate();
-  const id = params.get("id");
-  const token = params.get("token");
-  const [status, setStatus] = useState("verifying"); // verifying | ok | error
-
-  useEffect(() => {
-    if (!id || !token) {
-      setStatus("error");
-      return;
-    }
-    verifyEmail(id, token)
-      .then((res) => setStatus(res.success ? "ok" : "error"))
-      .catch(() => setStatus("error"));
-  }, [id, token]);
-
-  const loggedIn = !!localStorage.getItem("token");
+  const { data: session } = useSession();
+  const loggedIn = !!session?.user;
 
   return (
     <AuthLayout
       title="Email verification"
-      subtitle={
-        status === "verifying" ? "Confirming your email…" : "Account email"
-      }
+      subtitle="Account email"
       footer={
         loggedIn ? (
           <button
@@ -43,20 +27,9 @@ export default function VerifyEmail() {
         )
       }
     >
-      {status === "verifying" && (
-        <div className="text-sm text-[var(--surface-muted)]">Please wait…</div>
-      )}
-      {status === "ok" && (
-        <div className="rounded-lg bg-brand-50 px-4 py-3 text-sm text-[var(--surface-text)] dark:bg-brand-600/15">
-          ✓ Your email is verified. You're all set!
-        </div>
-      )}
-      {status === "error" && (
-        <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-500/10">
-          This verification link is invalid or has expired. You can request a new
-          one from your account settings.
-        </div>
-      )}
+      <div className="rounded-lg bg-brand-50 px-4 py-3 text-sm text-[var(--surface-text)] dark:bg-brand-600/15">
+        ✓ Your email has been verified. You&apos;re all set!
+      </div>
     </AuthLayout>
   );
 }
