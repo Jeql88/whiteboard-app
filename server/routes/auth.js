@@ -8,7 +8,12 @@ const { ObjectId } = require("mongodb");
 const { JWT_SECRET, CLIENT_ORIGIN } = require("../config");
 const { getCollections } = require("../db");
 const { authMiddleware } = require("../middleware/auth");
+const { rateLimit } = require("../middleware/rateLimit");
 const { sendResetEmail, sendVerifyEmail } = require("../email");
+
+// Throttle credential + reset endpoints to slow brute force / email spam.
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 12 });
+const forgotLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5 });
 
 const router = express.Router();
 
@@ -95,7 +100,7 @@ router.post("/register", async (req, res) => {
   });
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   const { username, password } = req.body || {};
   const { users } = getCollections();
   const user = await users.findOne({ username });
@@ -107,7 +112,7 @@ router.post("/login", async (req, res) => {
 
 // Request a password reset. Always responds 200 so we don't reveal which
 // emails exist.
-router.post("/forgot", async (req, res) => {
+router.post("/forgot", forgotLimiter, async (req, res) => {
   const { email } = req.body || {};
   res.json({ success: true }); // respond immediately, regardless
 

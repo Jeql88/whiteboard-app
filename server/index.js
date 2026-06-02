@@ -14,8 +14,12 @@ const { connectDB } = require("./db");
 const { initSocket } = require("./socket");
 const authRoutes = require("./routes/auth");
 const whiteboardRoutes = require("./routes/whiteboards");
+const ocrRoutes = require("./routes/ocr");
 
 const app = express();
+// Render terminates TLS at a proxy; trust it so req.ip reflects the real client
+// (needed for rate limiting to key per-user, not per-proxy).
+app.set("trust proxy", 1);
 const server = http.createServer(app);
 
 // Same-origin in production; allow the Vite dev origin otherwise. When
@@ -38,6 +42,7 @@ app.get("/healthz", (req, res) => res.sendStatus(200));
 // REST API.
 app.use("/api/auth", authRoutes);
 app.use("/api/whiteboards", whiteboardRoutes(io));
+app.use("/api/whiteboards", ocrRoutes());
 
 // Static client build + SPA fallback.
 // Socket.IO owns /socket.io on the http server, so it never reaches Express.

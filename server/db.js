@@ -36,6 +36,12 @@ async function connectDB() {
     { unique: true, sparse: true }
   );
 
+  // Dashboard lists boards by owner OR editor — index both to avoid scans.
+  await collections.whiteboards.createIndex({ userId: 1 });
+  await collections.whiteboards.createIndex({ editors: 1 });
+  // Content search across board name + extracted text (typed + OCR).
+  await collections.whiteboards.createIndex({ textIndex: "text", name: "text" });
+
   console.log(`[db] Connected to MongoDB database "${DB_NAME}"`);
 }
 

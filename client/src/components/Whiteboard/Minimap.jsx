@@ -33,9 +33,13 @@ export default function Minimap({ apiRef }) {
       const elements = api
         .getSceneElements()
         .filter((el) => !el.isDeleted && el.width != null && el.height != null);
-      const app = api.getAppState();
 
       setHasContent(elements.length > 0);
+      // Nothing to map → the container is hidden (opacity-0); skip all the
+      // bounds + canvas drawing work to keep this loop cheap.
+      if (elements.length === 0) return;
+
+      const app = api.getAppState();
 
       // Viewport rect in scene coords.
       const zoom = app.zoom?.value || 1;

@@ -99,7 +99,10 @@ export default function ChatBox({ socket, userId, whiteboardId, username, onClos
         {messages.map((msg, i) => {
           const isMe = msg.userId === userId;
           return (
-            <div key={i} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+            <div
+              key={msg.id || `${msg.userId}-${msg.time}-${i}`}
+              className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+            >
               <div
                 className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${
                   isMe

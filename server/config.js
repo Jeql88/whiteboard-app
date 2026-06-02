@@ -9,6 +9,9 @@ const MONGO_URI = process.env.MONGO_URI;
 const JWT_SECRET = process.env.JWT_SECRET;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "";
 const DB_NAME = process.env.DB_NAME || "whiteboard";
+// Optional: enables handwriting OCR (Google Cloud Vision). If unset, the OCR
+// endpoint degrades gracefully and typed-text search still works.
+const GOOGLE_VISION_KEY = process.env.GOOGLE_VISION_KEY || "";
 
 function requireVar(name, value) {
   if (!value) {
@@ -32,4 +35,5 @@ module.exports = {
   JWT_SECRET,
   CLIENT_ORIGIN,
   DB_NAME,
+  GOOGLE_VISION_KEY,
 };

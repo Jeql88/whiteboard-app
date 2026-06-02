@@ -14,6 +14,16 @@ function sanitizeAppState(appState = {}) {
   return { viewBackgroundColor: appState.viewBackgroundColor || "#ffffff" };
 }
 
+// Concatenate the text of all non-deleted text elements (lowercased) for search.
+function typedTextOf(elements = []) {
+  return elements
+    .filter((el) => el && el.type === "text" && !el.isDeleted && el.text)
+    .map((el) => String(el.text))
+    .join(" ")
+    .toLowerCase()
+    .slice(0, 6000);
+}
+
 // Merge by id, higher version wins (tie-break versionNonce). Deleted elements
 // are kept as tombstones so a delete propagates and persists.
 function mergeElements(existing = [], incoming = []) {
@@ -56,6 +66,7 @@ async function loadScene(whiteboardId) {
     elements: doc.elements || [],
     appState: sanitizeAppState(doc.appState),
     files: doc.files || {},
+    updatedAt: doc.updatedAt ? new Date(doc.updatedAt).getTime() : 0,
   };
 }
 
@@ -64,8 +75,23 @@ function registerSceneHandlers(io, socket) {
 
   socket.on("sceneUpdate", async ({ whiteboardId, elements, appState, files }) => {
     if (!whiteboardId) return;
+    // Only a socket that successfully joined this board's room may write to it
+    // (joinWhiteboard already enforced access control before joining).
+    if (!socket.rooms.has(whiteboardId)) return;
+    if (!Array.isArray(elements)) return;
     const cleanAppState = sanitizeAppState(appState);
     const userId = socket.user.userId;
+
+    // Guard against the Mongo 16MB document limit (large pasted images).
+    try {
+      const approxBytes = JSON.stringify({ elements, files: files || {} }).length;
+      if (approxBytes > 15_000_000) {
+        socket.emit("sceneError", { error: "Board too large to save." });
+        return;
+      }
+    } catch {
+      return;
+    }
 
     const merged = await withBoardLock(whiteboardId, async () => {
       const existing = await scenes.findOne({ whiteboardId });
@@ -88,6 +114,9 @@ function registerSceneHandlers(io, socket) {
       return { elements: mergedElements, files: mergedFiles };
     });
 
+    // Derive searchable typed text from text elements (free, no OCR).
+    const typedText = typedTextOf(merged.elements);
+
     // Broadcast the MERGED scene so all clients converge on the same set.
     socket.to(whiteboardId).emit("sceneUpdate", {
       elements: merged.elements,
@@ -96,9 +125,22 @@ function registerSceneHandlers(io, socket) {
     });
 
     try {
+      // Recompute textIndex = typed text + any previously-extracted OCR text,
+      // so the dashboard can search by board CONTENT (not just name).
+      const board = await whiteboards.findOne(
+        { _id: new ObjectId(whiteboardId) },
+        { projection: { ocrText: 1 } }
+      );
+      const textIndex = [typedText, board?.ocrText || ""]
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 8000);
       await whiteboards.updateOne(
         { _id: new ObjectId(whiteboardId) },
-        { $set: { updatedAt: new Date() }, $addToSet: { editors: userId } }
+        {
+          $set: { updatedAt: new Date(), typedText, textIndex },
+          $addToSet: { editors: userId },
+        }
       );
     } catch {
       // whiteboardId may not be a valid ObjectId for ad-hoc/guest boards.
@@ -106,4 +148,15 @@ function registerSceneHandlers(io, socket) {
   });
 }
 
-module.exports = { registerSceneHandlers, loadScene, mergeElements };
+// Free a board's merge-lock entry (called on board delete / empty room) so the
+// boardLocks Map doesn't grow unbounded.
+function clearBoardLock(whiteboardId) {
+  boardLocks.delete(whiteboardId);
+}
+
+module.exports = {
+  registerSceneHandlers,
+  loadScene,
+  mergeElements,
+  clearBoardLock,
+};

@@ -23,3 +23,5 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
+      - key: GOOGLE_VISION_KEY
+        sync: false

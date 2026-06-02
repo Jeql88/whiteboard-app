@@ -22,10 +22,11 @@ import {
   FileText,
   Trash2,
   Maximize,
+  ScanText,
 } from "lucide-react";
 
 import { API_BASE } from "../../api/config";
-import { updateWhiteboard, saveThumbnail } from "../../api/whiteboard";
+import { updateWhiteboard, saveThumbnail, extractText } from "../../api/whiteboard";
 import { useTheme } from "../../theme/ThemeContext";
 import { getColorForName, getInitials } from "../../utils/userColor";
 import { counterInvertDataUrl } from "../../utils/imageFilter";
@@ -82,6 +83,7 @@ export default function WhiteboardEditor() {
   const [copied, setCopied] = useState(false);
   const [socket, setSocket] = useState(null);
   const [disconnected, setDisconnected] = useState(false);
+  const [toast, setToast] = useState("");
   const [gridMode, setGridMode] = useState(
     () => localStorage.getItem("wb-grid") === "1"
   );
@@ -202,15 +204,20 @@ export default function WhiteboardEditor() {
           const raw = localStorage.getItem(`wb-draft-${whiteboardId}`);
           if (raw) {
             const draft = JSON.parse(raw);
-            const serverNewer = false; // server scene has no timestamp we trust
-            if (draft?.elements?.length && !serverNewer && apiRef.current) {
+            // Only restore the local draft if it's strictly NEWER than the
+            // server snapshot (avoids resurrecting stale work after a sync).
+            const serverTs = scene?.updatedAt || 0;
+            const draftTs = draft?.t || 0;
+            if (draft?.elements?.length && draftTs > serverTs && apiRef.current) {
               const merged = reconcileElements(
                 apiRef.current.getSceneElementsIncludingDeleted(),
                 draft.elements
               );
-              // Only act if the draft actually adds/updates something.
               isApplyingRemote.current = false;
               apiRef.current.updateScene({ elements: merged });
+            } else {
+              // Server is authoritative → drop the stale draft.
+              localStorage.removeItem(`wb-draft-${whiteboardId}`);
             }
           }
         } catch {
@@ -247,7 +254,13 @@ export default function WhiteboardEditor() {
     // Presence avatar list.
     s.on("whiteboardUsers", (users) => setCollaborators(users || []));
 
-    return () => s.disconnect();
+    const variants = imageVariants.current; // capture for cleanup
+    return () => {
+      s.disconnect();
+      clearTimeout(sceneTimer.current);
+      clearTimeout(applyTimer.current);
+      variants.clear(); // release cached image dataURLs
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [whiteboardId]);
 
@@ -483,6 +496,49 @@ export default function WhiteboardEditor() {
     apiRef.current?.scrollToContent(undefined, { fitToViewport: true });
   };
 
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 4000);
+  };
+
+  // Render the board to a downscaled image and send it for handwriting OCR;
+  // the recognized text is added to this board's search index server-side.
+  const extractTextNow = async () => {
+    const api = apiRef.current;
+    if (!api) return;
+    const els = api.getSceneElements();
+    if (!els.length) return showToast("Nothing to extract yet.");
+    showToast("Extracting text…");
+    try {
+      const blob = await exportToBlob({
+        elements: els,
+        appState: { ...api.getAppState(), exportBackground: true },
+        files: api.getFiles(),
+        mimeType: "image/jpeg",
+        quality: 0.85,
+        getDimensions: (w, h) => {
+          const max = 1600;
+          const scale = Math.min(1, max / Math.max(w, h));
+          return { width: w * scale, height: h * scale, scale };
+        },
+      });
+      const dataUrl = await new Promise((res2) => {
+        const r = new FileReader();
+        r.onload = () => res2(r.result);
+        r.readAsDataURL(blob);
+      });
+      const result = await extractText(whiteboardId, dataUrl);
+      if (result.error) return showToast(result.error);
+      showToast(
+        result.words
+          ? `Extracted ${result.words} words — board is now searchable by its text.`
+          : "No text detected."
+      );
+    } catch {
+      showToast("Couldn't extract text. Try again.");
+    }
+  };
+
   const btn =
     "inline-flex items-center justify-center h-9 w-9 rounded-lg text-[var(--surface-muted)] hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-600/15 transition-colors";
 
@@ -579,6 +635,11 @@ export default function WhiteboardEditor() {
             Reconnecting…
           </div>
         )}
+        {toast && (
+          <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-lg bg-slate-900/95 px-4 py-2 text-sm font-medium text-white shadow-lg">
+            {toast}
+          </div>
+        )}
         <Excalidraw
           excalidrawAPI={(api) => (apiRef.current = api)}
           theme={theme}
@@ -613,6 +674,9 @@ export default function WhiteboardEditor() {
             <MainMenu.Separator />
             <MainMenu.Item onSelect={zoomToFit} icon={<Maximize size={16} />}>
               Zoom to fit
+            </MainMenu.Item>
+            <MainMenu.Item onSelect={extractTextNow} icon={<ScanText size={16} />}>
+              Extract text (OCR)
             </MainMenu.Item>
             <MainMenu.Item onSelect={toggleGrid} icon={<Grid3x3 size={16} />}>
               {gridMode ? "Hide grid" : "Show grid"}

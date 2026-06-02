@@ -5,13 +5,24 @@ const express = require("express");
 const { ObjectId } = require("mongodb");
 const { authMiddleware } = require("../middleware/auth");
 const { getCollections } = require("../db");
-const { getActiveBoardIds } = require("../socket/presence");
+const { getActiveBoardIds, clearBoardState } = require("../socket/presence");
+const { canAccessBoard, toObjectId } = require("../auth/boards");
 
 // Unverified users may own at most this many boards (incentive to verify).
 const UNVERIFIED_BOARD_LIMIT = 5;
 
 module.exports = function whiteboardRoutes(io) {
   const router = express.Router();
+
+  // Reusable access guard for board sub-resources (comments, etc.).
+  async function ensureAccess(req, res) {
+    const ok = await canAccessBoard(req.user, req.params.id).catch(() => false);
+    if (!ok) {
+      res.status(403).json({ error: "Not authorized for this board" });
+      return false;
+    }
+    return true;
+  }
 
   // List boards owned by, or shared with, the current user.
   router.get("/", authMiddleware, async (req, res) => {
@@ -47,7 +58,9 @@ module.exports = function whiteboardRoutes(io) {
       }
     }
 
-    const { name } = req.body;
+    let name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    if (!name) name = "Untitled";
+    if (name.length > 120) name = name.slice(0, 120);
     const now = new Date();
     const whiteboard = { name, userId, createdAt: now, updatedAt: now };
     const result = await whiteboards.insertOne(whiteboard);
@@ -93,10 +106,13 @@ module.exports = function whiteboardRoutes(io) {
       return res.status(413).json({ error: "Thumbnail too large" });
     }
     try {
-      await whiteboards.updateOne(
+      const result = await whiteboards.updateOne(
         { _id: new ObjectId(whiteboardId), $or: [{ userId }, { editors: userId }] },
         { $set: { thumbnail } }
       );
+      if (result.matchedCount === 0) {
+        return res.status(403).json({ error: "Not authorized for this board" });
+      }
       res.json({ success: true });
     } catch {
       res.status(400).json({ error: "Could not save thumbnail" });
@@ -120,6 +136,7 @@ module.exports = function whiteboardRoutes(io) {
           .json({ error: "Whiteboard not found or unauthorized" });
       }
       await scenes.deleteOne({ whiteboardId });
+      clearBoardState(whiteboardId); // free in-memory locks/presence/chat
       res.json({ success: true, message: "Whiteboard deleted" });
     } catch (err) {
       console.error(err);
@@ -130,6 +147,7 @@ module.exports = function whiteboardRoutes(io) {
   // --- Comments ---
 
   router.get("/:id/comments", authMiddleware, async (req, res) => {
+    if (!(await ensureAccess(req, res))) return;
     const { comments } = getCollections();
     const whiteboardId = req.params.id;
     const result = await comments
@@ -140,10 +158,16 @@ module.exports = function whiteboardRoutes(io) {
   });
 
   router.post("/:id/comments", authMiddleware, async (req, res) => {
+    if (!(await ensureAccess(req, res))) return;
     const { comments, users } = getCollections();
     const whiteboardId = req.params.id;
     const { text } = req.body;
-    if (!text) return res.status(400).json({ error: "No comment text" });
+    if (typeof text !== "string" || !text.trim()) {
+      return res.status(400).json({ error: "No comment text" });
+    }
+    if (text.length > 2000) {
+      return res.status(400).json({ error: "Comment too long" });
+    }
 
     let userName = "Anonymous";
     try {

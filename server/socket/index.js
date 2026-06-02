@@ -4,6 +4,7 @@
 const { socketAuth } = require("../middleware/auth");
 const { registerSceneHandlers, loadScene } = require("./scene");
 const { registerPresenceHandlers, getChatHistory } = require("./presence");
+const { canAccessBoard } = require("../auth/boards");
 
 function initSocket(io) {
   io.use(socketAuth);
@@ -11,6 +12,17 @@ function initSocket(io) {
   io.on("connection", (socket) => {
     socket.on("joinWhiteboard", async (whiteboardId) => {
       if (!whiteboardId) return;
+
+      // Authorization: only owner/editor (or a guest holding the link) may join
+      // and receive the scene. Unknown/unauthorized → reject without joining.
+      const allowed = await canAccessBoard(socket.user, whiteboardId).catch(
+        () => false
+      );
+      if (!allowed) {
+        socket.emit("accessDenied", { whiteboardId });
+        return;
+      }
+
       socket.join(whiteboardId);
       socket.whiteboardId = whiteboardId;
 

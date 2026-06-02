@@ -29,11 +29,23 @@ export default function CommentsSidebar({
     };
   }, [socket]);
 
+  const [adding, setAdding] = useState(false);
+
   const handleAdd = async (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    await addComment(whiteboardId, input);
+    if (!input.trim() || adding) return;
+    setAdding(true);
+    const res = await addComment(whiteboardId, input);
+    setAdding(false);
+    if (res?.error) return; // keep input so the user can retry
     setInput("");
+  };
+
+  const handleDelete = async (id) => {
+    const res = await deleteComment(whiteboardId, id);
+    // The server broadcasts deleteComment on success; if it errored, the
+    // comment simply stays. (No optimistic removal to undo.)
+    if (res?.error) console.warn("[comments] delete failed:", res.error);
   };
 
   return (
@@ -65,7 +77,7 @@ export default function CommentsSidebar({
               </span>
               {c.userId === currentUserId && (
                 <button
-                  onClick={() => deleteComment(whiteboardId, c._id)}
+                  onClick={() => handleDelete(c._id)}
                   title="Delete"
                   className="text-[var(--surface-muted)] hover:text-red-600"
                 >
@@ -93,7 +105,8 @@ export default function CommentsSidebar({
         />
         <button
           type="submit"
-          className="inline-flex items-center justify-center rounded-lg bg-brand-600 px-3 text-white hover:bg-brand-700"
+          disabled={adding}
+          className="inline-flex items-center justify-center rounded-lg bg-brand-600 px-3 text-white hover:bg-brand-700 disabled:opacity-60"
         >
           <Send size={16} />
         </button>

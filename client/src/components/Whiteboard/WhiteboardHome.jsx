@@ -66,7 +66,12 @@ export default function WhiteboardHome() {
       setFilteredBoards(
         term === ""
           ? whiteboards
-          : whiteboards.filter((wb) => wb.name.toLowerCase().includes(term))
+          : whiteboards.filter(
+              (wb) =>
+                wb.name.toLowerCase().includes(term) ||
+                // Search board CONTENT: typed text + any extracted (OCR) text.
+                (wb.textIndex || "").includes(term)
+            )
       );
     }, 400);
     return () => clearTimeout(delay);
@@ -172,7 +177,7 @@ export default function WhiteboardHome() {
           />
           <input
             type="text"
-            placeholder="Search whiteboards…"
+            placeholder="Search by name or content…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface-card)] py-2 pl-9 pr-3 text-sm text-[var(--surface-text)] outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
