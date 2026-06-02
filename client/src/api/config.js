@@ -1,33 +1,31 @@
 // Base URL for the API + Socket.IO connection.
-//
 // Production: same-origin monolith → window.location.origin.
-// Development: Vite proxies /api and /socket.io to the node server, so
-// window.location.origin (the Vite dev origin) still works.
-// Override with VITE_API_BASE only if the API lives on a different host.
+// Development: Vite proxies /api and /socket.io to the node server.
 export const API_BASE =
   import.meta.env.VITE_API_BASE ?? window.location.origin;
 
+// Clerk token getter — set by ClerkProvider in main.jsx via setClerkTokenGetter().
+let _getToken = () => Promise.resolve(null);
+export function setClerkTokenGetter(fn) {
+  _getToken = fn;
+}
+
 let redirecting = false;
 function handleUnauthorized() {
-  // Token expired/invalid mid-session: clear it and bounce to login once.
   if (redirecting) return;
   redirecting = true;
-  localStorage.removeItem("token");
-  if (!location.pathname.startsWith("/login")) {
-    window.location.assign("/login");
+  if (!location.pathname.startsWith("/sign-in")) {
+    window.location.assign("/sign-in");
   }
 }
 
-// Central fetch wrapper: 60s timeout (Render cold starts), 401 handling, and
-// tolerant JSON parsing so callers always get an object (with `.error` on
-// failure) instead of a thrown exception or a hang.
 export async function apiFetch(path, { method = "GET", body, auth = true, headers = {} } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 60000);
   const h = { ...headers };
   if (body !== undefined) h["Content-Type"] = "application/json";
   if (auth) {
-    const token = localStorage.getItem("token");
+    const token = await _getToken();
     if (token) h.Authorization = `Bearer ${token}`;
   }
   try {
