@@ -623,11 +623,9 @@ export default function WhiteboardEditor() {
         {isGuest && (
           <a
             href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}
-            className="flex flex-col items-center rounded-md bg-accent-500/15 px-2.5 py-0.5 text-accent-600 hover:bg-accent-500/25 transition-colors leading-tight"
-            title="Sign in for full access"
+            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 transition-colors"
           >
-            <span className="text-[9px] font-medium opacity-70">limited capabilities</span>
-            <span className="text-xs font-semibold">Guest</span>
+            Login
           </a>
         )}
 
