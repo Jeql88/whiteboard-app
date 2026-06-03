@@ -75,10 +75,10 @@ function registerSceneHandlers(io, socket) {
 
   socket.on("sceneUpdate", async ({ whiteboardId, elements, appState, files }) => {
     if (!whiteboardId) return;
-    // Only a socket that successfully joined this board's room may write to it
-    // (joinWhiteboard already enforced access control before joining).
     if (!socket.rooms.has(whiteboardId)) return;
     if (!Array.isArray(elements)) return;
+    // View-only guests cannot write scene updates.
+    if (socket.user?.isGuest && socket.shareMode === "view") return;
     const cleanAppState = sanitizeAppState(appState);
     const userId = socket.user.userId;
 

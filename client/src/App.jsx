@@ -60,14 +60,14 @@ export default function App() {
             path="/account"
             element={<Protected><AccountSettings /></Protected>}
           />
+          {/* Whiteboard editor is publicly accessible — guests can join via link.
+              Auth is enforced at the socket level based on shareAccess setting. */}
           <Route
             path="/whiteboard/:id"
             element={
-              <Protected>
-                <Suspense fallback={<EditorFallback />}>
-                  <WhiteboardEditor />
-                </Suspense>
-              </Protected>
+              <Suspense fallback={<EditorFallback />}>
+                <WhiteboardEditor />
+              </Suspense>
             }
           />
           {/* Admin panel */}

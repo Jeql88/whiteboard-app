@@ -14,8 +14,8 @@ module.exports = function whiteboardRoutes(io) {
 
   // Reusable access guard for board sub-resources (comments, etc.).
   async function ensureAccess(req, res) {
-    const ok = await canAccessBoard(req.user, req.params.id).catch(() => false);
-    if (!ok) {
+    const { allowed } = await canAccessBoard(req.user, req.params.id).catch(() => ({ allowed: false }));
+    if (!allowed) {
       res.status(403).json({ error: "Not authorized for this board" });
       return false;
     }
@@ -37,6 +37,52 @@ module.exports = function whiteboardRoutes(io) {
   // Registered before /:id so it isn't captured as an id param.
   router.get("/active", authMiddleware, (req, res) => {
     res.json({ active: getActiveBoardIds() });
+  });
+
+  // Public board info (no auth) — used by the editor to show board name + access level
+  // before the socket connects, including for guests.
+  router.get("/:id/info", async (req, res) => {
+    const { whiteboards } = getCollections();
+    try {
+      const board = await whiteboards.findOne(
+        { _id: new ObjectId(req.params.id) },
+        { projection: { name: 1, shareMode: 1, shareAccess: 1, userId: 1 } }
+      );
+      if (!board) return res.status(404).json({ error: "Not found" });
+      res.json({
+        name: board.name,
+        shareMode: board.shareMode || "edit",
+        shareAccess: board.shareAccess || "anyone",
+        ownerId: board.userId,
+      });
+    } catch {
+      res.status(400).json({ error: "Invalid board id" });
+    }
+  });
+
+  // Update share settings (owner only).
+  router.patch("/:id/share", authMiddleware, async (req, res) => {
+    const { whiteboards } = getCollections();
+    const whiteboardId = req.params.id;
+    const userId = req.user.userId;
+    const { shareMode, shareAccess } = req.body || {};
+    const validModes = ["edit", "view"];
+    const validAccess = ["anyone", "auth"];
+    if (shareMode && !validModes.includes(shareMode)) return res.status(400).json({ error: "Invalid shareMode" });
+    if (shareAccess && !validAccess.includes(shareAccess)) return res.status(400).json({ error: "Invalid shareAccess" });
+    try {
+      const updates = {};
+      if (shareMode) updates.shareMode = shareMode;
+      if (shareAccess) updates.shareAccess = shareAccess;
+      const result = await whiteboards.updateOne(
+        { _id: new ObjectId(whiteboardId), userId },
+        { $set: updates }
+      );
+      if (result.matchedCount === 0) return res.status(404).json({ error: "Not found or unauthorized" });
+      res.json({ success: true, shareMode, shareAccess });
+    } catch (err) {
+      res.status(500).json({ error: "Server error" });
+    }
   });
 
   // Create a board.

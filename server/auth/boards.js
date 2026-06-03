@@ -1,7 +1,5 @@
 // Board access control. A user may access a board if they own it or are an
-// editor. Boards are shared by link, so a guest holding the link is treated as
-// an allowed viewer/editor (current product design) — but only for boards that
-// actually exist. Unknown/invalid ids are denied.
+// editor. Boards are shared by link; shareAccess and shareMode control guest behavior.
 
 const { ObjectId } = require("mongodb");
 const { getCollections } = require("../db");
@@ -24,20 +22,28 @@ async function getBoard(whiteboardId) {
 }
 
 // Can this user access this board?
-// - owner or editor → yes
-// - guest (isGuest) holding the link → yes, if the board exists (link-shared)
-// - otherwise → no
+// Returns { allowed: bool, shareMode: "edit"|"view" }
+// - owner or editor → always allowed, full edit
+// - guest → allowed only if shareAccess !== "auth"; shareMode controls edit vs view
 async function canAccessBoard(user, whiteboardId) {
   const board = await getBoard(whiteboardId);
-  if (!board) return false;
-  if (user?.isGuest) return true; // link-shared access
-  const uid = user?.userId;
-  if (!uid) return false;
-  if (String(board.userId) === String(uid)) return true;
-  if (Array.isArray(board.editors) && board.editors.map(String).includes(String(uid))) {
-    return true;
+  if (!board) return { allowed: false, shareMode: "edit" };
+
+  const shareAccess = board.shareAccess || "anyone";
+  const shareMode = board.shareMode || "edit";
+
+  if (user?.isGuest) {
+    if (shareAccess === "auth") return { allowed: false, shareMode };
+    return { allowed: true, shareMode };
   }
-  return false;
+
+  const uid = user?.userId;
+  if (!uid) return { allowed: false, shareMode };
+  if (String(board.userId) === String(uid)) return { allowed: true, shareMode: "edit" }; // owner always edits
+  if (Array.isArray(board.editors) && board.editors.map(String).includes(String(uid))) {
+    return { allowed: true, shareMode: "edit" }; // named editors always edit
+  }
+  return { allowed: false, shareMode };
 }
 
 module.exports = { canAccessBoard, getBoard, toObjectId };

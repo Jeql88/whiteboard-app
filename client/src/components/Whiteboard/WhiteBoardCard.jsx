@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { MoreHorizontal, Pencil, Trash2, Copy, ExternalLink } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, Copy, ExternalLink, Lock, ShieldCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useSession } from "../../lib/auth-client";
 import { deleteWhiteboard, updateWhiteboard, duplicateWhiteboard } from "../../api/whiteboard";
@@ -89,7 +89,7 @@ export default function WhiteboardCard({ whiteboard, onDelete, onRename, onDupli
 
         {/* Footer — 25% */}
         <div className="flex flex-1 flex-col justify-center border-t border-[var(--surface-border)] px-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
             <span className="truncate text-sm font-semibold text-[var(--surface-text)]">
               {whiteboard.name}
             </span>
@@ -97,6 +97,12 @@ export default function WhiteboardCard({ whiteboard, onDelete, onRename, onDupli
               <span className="shrink-0 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 dark:bg-brand-600/15">
                 Shared
               </span>
+            )}
+            {whiteboard.shareMode === "view" && (
+              <Lock size={10} className="shrink-0 text-amber-500" title="View only for guests" />
+            )}
+            {whiteboard.shareAccess === "auth" && (
+              <ShieldCheck size={10} className="shrink-0 text-brand-400" title="Signed-in users only" />
             )}
           </div>
           <p className="mt-0.5 text-xs text-[var(--surface-muted)]">{lastEdited}</p>

@@ -30,6 +30,14 @@ export function saveThumbnail(id, thumbnail) {
   return apiFetch(`${WB}/${id}/thumbnail`, { method: "PUT", body: { thumbnail } });
 }
 
+export function getBoardInfo(id) {
+  return apiFetch(`${WB}/${id}/info`, { auth: false });
+}
+
+export function updateShareSettings(id, settings) {
+  return apiFetch(`${WB}/${id}/share`, { method: "PATCH", body: settings });
+}
+
 export function duplicateWhiteboard(id) {
   return apiFetch(`${WB}/${id}/duplicate`, { method: "POST" });
 }

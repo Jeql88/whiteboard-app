@@ -26,10 +26,14 @@ import {
   ScanText,
   X,
   PenLine,
+  Lock,
+  LockOpen,
+  Users,
+  LogIn,
 } from "lucide-react";
 
 import { API_BASE } from "../../api/config";
-import { updateWhiteboard, saveThumbnail, extractText } from "../../api/whiteboard";
+import { updateWhiteboard, saveThumbnail, extractText, updateShareSettings } from "../../api/whiteboard";
 import { useTheme } from "../../theme/ThemeContext";
 import { getColorForName, getInitials } from "../../utils/userColor";
 import { counterInvertDataUrl } from "../../utils/imageFilter";
@@ -77,6 +81,9 @@ export default function WhiteboardEditor() {
   const [toast, setToast] = useState("");
   const [ocrResult, setOcrResult] = useState(null);
   const [ocrCopied, setOcrCopied] = useState(false);
+  const [shareMode, setShareMode] = useState("edit");   // "edit" | "view"
+  const [shareAccess, setShareAccess] = useState("anyone"); // "anyone" | "auth"
+  const [showSharePanel, setShowSharePanel] = useState(false);
   const [gridMode, setGridMode] = useState(
     () => localStorage.getItem("wb-grid") === "1"
   );
@@ -159,6 +166,13 @@ export default function WhiteboardEditor() {
       });
     });
     s.on("disconnect", () => setDisconnected(true));
+    s.on("accessDenied", ({ reason }) => {
+      if (reason === "auth_required") {
+        // Board is set to logged-in users only — redirect to login with returnTo.
+        const returnTo = encodeURIComponent(window.location.pathname);
+        window.location.assign(`/login?returnTo=${returnTo}`);
+      }
+    });
 
     // Apply a remote scene, reconciling with the current local elements so we
     // never drop a local element the broadcast didn't include yet. The
@@ -189,8 +203,15 @@ export default function WhiteboardEditor() {
     // On initial hydration, if a local draft is NEWER than the server scene
     // (e.g. a refresh happened before the last change synced), prefer the draft
     // and push it up. reconcileElements (id+version) makes this safe to merge.
+    // Listen for live share mode changes from the owner.
+    s.on("shareModeChanged", ({ shareMode: newMode }) => {
+      setShareMode(newMode);
+    });
+
     let hydrated = false;
     s.on("sceneInit", (scene) => {
+      // Read share settings from the server's initial payload.
+      if (scene?.shareMode) setShareMode(scene.shareMode);
       applyRemoteScene(scene);
       if (!hydrated) {
         hydrated = true;
@@ -532,6 +553,30 @@ export default function WhiteboardEditor() {
     }
   };
 
+  // Close share panel on outside click.
+  useEffect(() => {
+    if (!showSharePanel) return;
+    const handler = () => setShowSharePanel(false);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showSharePanel]);
+
+  // View-only mode: guests on a view-only board cannot draw.
+  const isViewOnly = isGuest && shareMode === "view";
+
+  // Owner toggles share mode (lock/unlock) — broadcasts to all peers via socket.
+  const toggleShareMode = async () => {
+    const next = shareMode === "edit" ? "view" : "edit";
+    setShareMode(next);
+    await updateShareSettings(whiteboardId, { shareMode: next });
+    socket?.emit("shareModeChanged", { whiteboardId, shareMode: next });
+  };
+
+  const saveShareAccess = async (next) => {
+    setShareAccess(next);
+    await updateShareSettings(whiteboardId, { shareAccess: next });
+  };
+
   const btn =
     "inline-flex items-center justify-center h-9 w-9 rounded-lg text-[var(--surface-muted)] hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-600/15 transition-colors";
 
@@ -563,8 +608,15 @@ export default function WhiteboardEditor() {
         />
 
         {isGuest && (
-          <span className="rounded-md bg-accent-500/15 px-2 py-0.5 text-xs font-medium text-accent-600">
-            Guest
+          <span className="flex items-center gap-1.5 rounded-md bg-accent-500/15 px-2 py-0.5 text-xs font-medium text-accent-600">
+            {isViewOnly ? <Lock size={11} /> : null}
+            {isViewOnly ? "View only" : "Guest"}
+            <a
+              href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}
+              className="flex items-center gap-0.5 font-semibold underline underline-offset-2 hover:text-accent-700"
+            >
+              <LogIn size={11} /> Sign in
+            </a>
           </span>
         )}
 
@@ -592,6 +644,76 @@ export default function WhiteboardEditor() {
         <button onClick={() => setOpenPanel(openPanel === "chat" ? null : "chat")} className={btn} title="Chat">
           <MessagesSquare size={18} />
         </button>
+
+        {/* Share settings — owner only */}
+        {!isGuest && (
+          <div className="relative">
+            <button
+              onClick={() => setShowSharePanel((v) => !v)}
+              className={`${btn} ${showSharePanel ? "bg-brand-50 text-brand-600 dark:bg-brand-600/15" : ""}`}
+              title="Share settings"
+            >
+              <Users size={18} />
+            </button>
+            {showSharePanel && (
+              <div
+                className="absolute right-0 top-11 z-40 w-64 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-card)] p-4 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--surface-muted)]">Share settings</p>
+                {/* shareMode toggle */}
+                <div className="mb-3">
+                  <p className="mb-1.5 text-xs font-medium text-[var(--surface-text)]">Guests can</p>
+                  <div className="flex overflow-hidden rounded-lg border border-[var(--surface-border)]">
+                    {["edit", "view"].map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => { setShareMode(m); updateShareSettings(whiteboardId, { shareMode: m }); socket?.emit("shareModeChanged", { whiteboardId, shareMode: m }); }}
+                        className={`flex-1 py-1.5 text-xs font-medium capitalize transition-colors ${shareMode === m ? "bg-brand-600 text-white" : "text-[var(--surface-muted)] hover:bg-[var(--surface-border)]"}`}
+                      >
+                        {m === "edit" ? "Edit" : "View only"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* shareAccess toggle */}
+                <div className="mb-3">
+                  <p className="mb-1.5 text-xs font-medium text-[var(--surface-text)]">Who can access</p>
+                  <div className="flex overflow-hidden rounded-lg border border-[var(--surface-border)]">
+                    {[["anyone", "Anyone with link"], ["auth", "Signed-in only"]].map(([v, label]) => (
+                      <button
+                        key={v}
+                        onClick={() => saveShareAccess(v)}
+                        className={`flex-1 py-1.5 text-xs font-medium transition-colors ${shareAccess === v ? "bg-brand-600 text-white" : "text-[var(--surface-muted)] hover:bg-[var(--surface-border)]"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Copy link */}
+                <button
+                  onClick={() => { copyLink(); setShowSharePanel(false); }}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-600 py-2 text-xs font-semibold text-white hover:bg-brand-700"
+                >
+                  <Link2 size={13} />
+                  {copied ? "Copied!" : "Copy share link"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Lock button — quick toggle for view-only mode (owner only) */}
+        {!isGuest && (
+          <button
+            onClick={toggleShareMode}
+            className={`${btn} ${shareMode === "view" ? "text-amber-500 hover:text-amber-600" : ""}`}
+            title={shareMode === "view" ? "Board is view-only for guests — click to allow editing" : "Lock board to view-only for guests"}
+          >
+            {shareMode === "view" ? <Lock size={18} /> : <LockOpen size={18} />}
+          </button>
+        )}
 
         {/* Export + grid live in the top-left Excalidraw menu (no duplicates here). */}
         <button onClick={copyLink} className={`${btn} hidden sm:inline-flex`} title="Copy shareable link">
@@ -626,6 +748,7 @@ export default function WhiteboardEditor() {
           excalidrawAPI={(api) => (apiRef.current = api)}
           theme={theme}
           gridModeEnabled={gridMode}
+          viewModeEnabled={isViewOnly}
           onChange={handleChange}
           onPointerUpdate={handlePointer}
           initialData={{
