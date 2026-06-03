@@ -645,80 +645,67 @@ export default function WhiteboardEditor() {
           <MessagesSquare size={18} />
         </button>
 
-        {/* Share settings — owner only */}
-        {!isGuest && (
-          <div className="relative">
-            <button
-              onClick={() => setShowSharePanel((v) => !v)}
-              className={`${btn} ${showSharePanel ? "bg-brand-50 text-brand-600 dark:bg-brand-600/15" : ""}`}
-              title="Share settings"
-            >
-              <Users size={18} />
-            </button>
-            {showSharePanel && (
-              <div
-                className="absolute right-0 top-11 z-40 w-64 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-card)] p-4 shadow-xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--surface-muted)]">Share settings</p>
-                {/* shareMode toggle */}
-                <div className="mb-3">
-                  <p className="mb-1.5 text-xs font-medium text-[var(--surface-text)]">Guests can</p>
-                  <div className="flex overflow-hidden rounded-lg border border-[var(--surface-border)]">
-                    {["edit", "view"].map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => { setShareMode(m); updateShareSettings(whiteboardId, { shareMode: m }); socket?.emit("shareModeChanged", { whiteboardId, shareMode: m }); }}
-                        className={`flex-1 py-1.5 text-xs font-medium capitalize transition-colors ${shareMode === m ? "bg-brand-600 text-white" : "text-[var(--surface-muted)] hover:bg-[var(--surface-border)]"}`}
-                      >
-                        {m === "edit" ? "Edit" : "View only"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {/* shareAccess toggle */}
-                <div className="mb-3">
-                  <p className="mb-1.5 text-xs font-medium text-[var(--surface-text)]">Who can access</p>
-                  <div className="flex overflow-hidden rounded-lg border border-[var(--surface-border)]">
-                    {[["anyone", "Anyone with link"], ["auth", "Signed-in only"]].map(([v, label]) => (
-                      <button
-                        key={v}
-                        onClick={() => saveShareAccess(v)}
-                        className={`flex-1 py-1.5 text-xs font-medium transition-colors ${shareAccess === v ? "bg-brand-600 text-white" : "text-[var(--surface-muted)] hover:bg-[var(--surface-border)]"}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {/* Copy link */}
-                <button
-                  onClick={() => { copyLink(); setShowSharePanel(false); }}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-600 py-2 text-xs font-semibold text-white hover:bg-brand-700"
-                >
-                  <Link2 size={13} />
-                  {copied ? "Copied!" : "Copy share link"}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Lock button — quick toggle for view-only mode (owner only) */}
-        {!isGuest && (
+        {/* Share / copy link — opens share popup for owners, just copies for guests */}
+        <div className="relative">
           <button
-            onClick={toggleShareMode}
-            className={`${btn} ${shareMode === "view" ? "text-amber-500 hover:text-amber-600" : ""}`}
-            title={shareMode === "view" ? "Board is view-only for guests — click to allow editing" : "Lock board to view-only for guests"}
+            onClick={() => !isGuest ? setShowSharePanel((v) => !v) : copyLink()}
+            className={`${btn} ${showSharePanel ? "bg-brand-50 text-brand-600 dark:bg-brand-600/15" : ""}`}
+            title={isGuest ? "Copy shareable link" : "Share & copy link"}
           >
-            {shareMode === "view" ? <Lock size={18} /> : <LockOpen size={18} />}
+            {copied ? <Check size={18} className="text-green-500" /> : <Link2 size={18} />}
           </button>
-        )}
 
-        {/* Export + grid live in the top-left Excalidraw menu (no duplicates here). */}
-        <button onClick={copyLink} className={`${btn} hidden sm:inline-flex`} title="Copy shareable link">
-          {copied ? <Check size={18} className="text-green-500" /> : <Link2 size={18} />}
-        </button>
+          {showSharePanel && !isGuest && (
+            <div
+              className="absolute right-0 top-11 z-40 w-68 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-card)] p-4 shadow-xl"
+              style={{ width: 272 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="mb-3 text-sm font-semibold text-[var(--surface-text)]">Share board</p>
+
+              {/* shareMode toggle */}
+              <div className="mb-3">
+                <p className="mb-1.5 text-xs font-medium text-[var(--surface-muted)]">Guests can</p>
+                <div className="flex overflow-hidden rounded-lg border border-[var(--surface-border)]">
+                  {[["edit", "Edit"], ["view", "View only"]].map(([m, label]) => (
+                    <button
+                      key={m}
+                      onClick={() => { setShareMode(m); updateShareSettings(whiteboardId, { shareMode: m }); socket?.emit("shareModeChanged", { whiteboardId, shareMode: m }); }}
+                      className={`flex-1 py-2 text-xs font-medium transition-colors ${shareMode === m ? "bg-brand-600 text-white" : "text-[var(--surface-muted)] hover:bg-[var(--surface-border)]"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* shareAccess toggle */}
+              <div className="mb-4">
+                <p className="mb-1.5 text-xs font-medium text-[var(--surface-muted)]">Who can access</p>
+                <div className="flex overflow-hidden rounded-lg border border-[var(--surface-border)]">
+                  {[["anyone", "Anyone with link"], ["auth", "Signed-in only"]].map(([v, label]) => (
+                    <button
+                      key={v}
+                      onClick={() => saveShareAccess(v)}
+                      className={`flex-1 py-2 text-xs font-medium transition-colors ${shareAccess === v ? "bg-brand-600 text-white" : "text-[var(--surface-muted)] hover:bg-[var(--surface-border)]"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Copy link */}
+              <button
+                onClick={() => { copyLink(); }}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
+              >
+                <Link2 size={14} />
+                {copied ? "Link copied!" : "Copy share link"}
+              </button>
+            </div>
+          )}
+        </div>
         <button
           onClick={togglePenMode}
           className={`${btn} ${penMode ? "bg-brand-600 text-white hover:bg-brand-700" : ""}`}

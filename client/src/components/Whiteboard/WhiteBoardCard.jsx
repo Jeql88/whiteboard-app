@@ -123,7 +123,7 @@ export default function WhiteboardCard({ whiteboard, onDelete, onRename, onDupli
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-8 w-44 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-card)] py-1 shadow-xl">
+            <div className="fixed z-50 w-44 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-card)] py-1 shadow-xl" style={{ top: menuRef.current ? menuRef.current.getBoundingClientRect().bottom + 4 : 0, right: window.innerWidth - (menuRef.current ? menuRef.current.getBoundingClientRect().right : 0) }}>
               <button
                 onClick={() => { setMenuOpen(false); window.open(`/whiteboard/${whiteboard._id}`, "_blank"); }}
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-[var(--surface-text)] hover:bg-[var(--surface-border)]"
