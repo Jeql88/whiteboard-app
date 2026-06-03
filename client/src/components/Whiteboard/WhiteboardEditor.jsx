@@ -140,6 +140,10 @@ export default function WhiteboardEditor() {
       }
     : { userId: guestId.current, username: "Guest" };
 
+  // Always-current ref so socket callbacks (wired once) never close over a stale me.
+  const meRef = useRef(me);
+  meRef.current = me;
+
   // --- Socket lifecycle ---
   // BetterAuth uses cookies — Socket.IO sends them automatically via withCredentials.
   useEffect(() => {
@@ -161,8 +165,8 @@ export default function WhiteboardEditor() {
       s.emit("joinWhiteboard", whiteboardId);
       s.emit("presence", {
         whiteboardId,
-        userId: me.userId,
-        username: me.username,
+        userId: meRef.current.userId,
+        username: meRef.current.username,
       });
     });
     s.on("disconnect", () => setDisconnected(true));
@@ -376,7 +380,6 @@ export default function WhiteboardEditor() {
 
   // --- Board name (fetch + rename) ---
   useEffect(() => {
-    if (isGuest) return;
     import("../../api/whiteboard").then(({ getWhiteboards, getBoardInfo }) => {
       if (isGuest) {
         getBoardInfo(whiteboardId).then((info) => {
@@ -620,15 +623,6 @@ export default function WhiteboardEditor() {
           title={isGuest ? "Sign in to rename" : "Rename board"}
         />
 
-        {isGuest && (
-          <a
-            href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}
-            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 transition-colors"
-          >
-            Login
-          </a>
-        )}
-
         <div className="flex-1" />
 
         {/* Presence avatars (deduped by userId, defensive against dup sockets) */}
@@ -647,7 +641,18 @@ export default function WhiteboardEditor() {
             ))}
         </div>
 
-<button onClick={() => setOpenPanel(openPanel === "comments" ? null : "comments")} className={btn} title="Comments">
+        {isGuest && (
+          <a
+            href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 transition-colors"
+            title="Sign in"
+          >
+            <LogIn size={14} />
+            <span className="hidden sm:inline">Login</span>
+          </a>
+        )}
+
+        <button onClick={() => setOpenPanel(openPanel === "comments" ? null : "comments")} className={btn} title="Comments">
           <MessageSquare size={18} />
         </button>
         <button onClick={() => setOpenPanel(openPanel === "chat" ? null : "chat")} className={btn} title="Chat">
