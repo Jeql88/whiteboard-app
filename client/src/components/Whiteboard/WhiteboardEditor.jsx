@@ -377,14 +377,20 @@ export default function WhiteboardEditor() {
   // --- Board name (fetch + rename) ---
   useEffect(() => {
     if (isGuest) return;
-    import("../../api/whiteboard").then(({ getWhiteboards }) =>
-      getWhiteboards().then((boards) => {
-        const found = Array.isArray(boards)
-          ? boards.find((b) => b._id === whiteboardId)
-          : null;
-        if (found) setBoardName(found.name);
-      })
-    );
+    import("../../api/whiteboard").then(({ getWhiteboards, getBoardInfo }) => {
+      if (isGuest) {
+        getBoardInfo(whiteboardId).then((info) => {
+          if (info?.name) setBoardName(info.name);
+        });
+      } else {
+        getWhiteboards().then((boards) => {
+          const found = Array.isArray(boards)
+            ? boards.find((b) => b._id === whiteboardId)
+            : null;
+          if (found) setBoardName(found.name);
+        });
+      }
+    });
   }, [whiteboardId, isGuest]);
 
   // Capture a thumbnail when leaving the board (unmount) and when the tab is
