@@ -553,10 +553,16 @@ export default function WhiteboardEditor() {
     }
   };
 
-  // Close share panel on outside click.
+  const sharePanelRef = useRef(null);
+
+  // Close share panel on outside click only.
   useEffect(() => {
     if (!showSharePanel) return;
-    const handler = () => setShowSharePanel(false);
+    const handler = (e) => {
+      if (sharePanelRef.current && !sharePanelRef.current.contains(e.target)) {
+        setShowSharePanel(false);
+      }
+    };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showSharePanel]);
@@ -657,9 +663,9 @@ export default function WhiteboardEditor() {
 
           {showSharePanel && !isGuest && (
             <div
-              className="absolute right-0 top-11 z-40 w-68 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-card)] p-4 shadow-xl"
+              ref={sharePanelRef}
+              className="absolute right-0 top-11 z-40 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-card)] p-4 shadow-xl"
               style={{ width: 272 }}
-              onClick={(e) => e.stopPropagation()}
             >
               <p className="mb-3 text-sm font-semibold text-[var(--surface-text)]">Share board</p>
 
