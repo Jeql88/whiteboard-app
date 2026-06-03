@@ -4,7 +4,7 @@
 const { socketAuth } = require("../middleware/auth");
 const { registerSceneHandlers, loadScene } = require("./scene");
 const { registerPresenceHandlers, getChatHistory } = require("./presence");
-const { canAccessBoard } = require("../auth/boards");
+const { canAccessBoard, getBoard } = require("../auth/boards");
 
 function initSocket(io) {
   io.use(socketAuth);
@@ -44,10 +44,13 @@ function initSocket(io) {
       socket.emit("chatHistory", getChatHistory(whiteboardId));
     });
 
-    // Owner can change shareMode live — broadcast to all peers in the board.
-    socket.on("shareModeChanged", ({ whiteboardId, shareMode }) => {
+    // Owner can change shareMode live — verify ownership before broadcasting.
+    socket.on("shareModeChanged", async ({ whiteboardId, shareMode }) => {
       if (!whiteboardId || !socket.rooms.has(whiteboardId)) return;
-      // Broadcast to everyone else in the room so guests immediately go view-only.
+      if (!["edit", "view"].includes(shareMode)) return;
+      const board = await getBoard(whiteboardId).catch(() => null);
+      if (!board || String(board.userId) !== String(socket.user?.userId)) return;
+      socket.shareMode = shareMode;
       socket.to(whiteboardId).emit("shareModeChanged", { shareMode });
     });
 

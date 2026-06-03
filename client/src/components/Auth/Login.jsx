@@ -24,7 +24,8 @@ const inputCls =
 
 export default function Login() {
   const [searchParams] = useSearchParams();
-  const returnTo = searchParams.get("returnTo") || "/whiteboards";
+  const raw = searchParams.get("returnTo") || "/whiteboards";
+  const returnTo = raw.startsWith("/") && !raw.startsWith("//") ? raw : "/whiteboards";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");

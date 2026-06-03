@@ -26,8 +26,8 @@ module.exports = function ocrRoutes() {
     if (!GOOGLE_VISION_KEY) {
       return res.status(503).json({ error: "OCR is not configured on this server." });
     }
-    const ok = await canAccessBoard(req.user, req.params.id).catch(() => false);
-    if (!ok) return res.status(403).json({ error: "Not authorized for this board" });
+    const { allowed } = await canAccessBoard(req.user, req.params.id).catch(() => ({ allowed: false }));
+    if (!allowed) return res.status(403).json({ error: "Not authorized for this board" });
 
     const { image } = req.body || {};
     if (typeof image !== "string" || !image) {

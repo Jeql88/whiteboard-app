@@ -583,14 +583,22 @@ export default function WhiteboardEditor() {
   // Owner toggles share mode (lock/unlock) — broadcasts to all peers via socket.
   const toggleShareMode = async () => {
     const next = shareMode === "edit" ? "view" : "edit";
-    setShareMode(next);
-    await updateShareSettings(whiteboardId, { shareMode: next });
-    socket?.emit("shareModeChanged", { whiteboardId, shareMode: next });
+    try {
+      await updateShareSettings(whiteboardId, { shareMode: next });
+      setShareMode(next);
+      socket?.emit("shareModeChanged", { whiteboardId, shareMode: next });
+    } catch {
+      showToast("Couldn't update share settings.");
+    }
   };
 
   const saveShareAccess = async (next) => {
-    setShareAccess(next);
-    await updateShareSettings(whiteboardId, { shareAccess: next });
+    try {
+      await updateShareSettings(whiteboardId, { shareAccess: next });
+      setShareAccess(next);
+    } catch {
+      showToast("Couldn't update share settings.");
+    }
   };
 
   const btn =
@@ -684,7 +692,7 @@ export default function WhiteboardEditor() {
                   {[["edit", "Edit"], ["view", "View only"]].map(([m, label]) => (
                     <button
                       key={m}
-                      onClick={() => { setShareMode(m); updateShareSettings(whiteboardId, { shareMode: m }); socket?.emit("shareModeChanged", { whiteboardId, shareMode: m }); }}
+                      onClick={() => { updateShareSettings(whiteboardId, { shareMode: m }).then(() => { setShareMode(m); socket?.emit("shareModeChanged", { whiteboardId, shareMode: m }); }).catch(() => showToast("Couldn't update share settings.")); }}
                       className={`flex-1 py-2 text-xs font-medium transition-colors ${shareMode === m ? "bg-brand-600 text-white" : "text-[var(--surface-muted)] hover:bg-[var(--surface-border)]"}`}
                     >
                       {label}

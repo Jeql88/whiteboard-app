@@ -44,8 +44,8 @@ function registerPresenceHandlers(io, socket) {
   socket.on("presence", ({ whiteboardId, userId, username }) => {
     if (!whiteboardId || typeof whiteboardId !== "string") return;
     if (!socket.rooms.has(whiteboardId)) return; // must have joined first
-    const uid = String(userId || socket.id).slice(0, 64);
-    const name = String(username || "Guest").slice(0, 60);
+    const uid = String(socket.user?.userId || socket.id).slice(0, 64);
+    const name = String(socket.user?.username || "Guest").slice(0, 60);
     if (!whiteboardUsers[whiteboardId]) whiteboardUsers[whiteboardId] = [];
     whiteboardUsers[whiteboardId] = whiteboardUsers[whiteboardId].filter(
       (u) => u.socketId !== socket.id && u.userId !== uid
@@ -57,6 +57,7 @@ function registerPresenceHandlers(io, socket) {
   // Live cursor — high-frequency, never persisted, never echoed to sender.
   socket.on("cursorUpdate", (payload) => {
     if (!payload?.whiteboardId) return;
+    if (!socket.rooms.has(payload.whiteboardId)) return;
     socket.to(payload.whiteboardId).emit("cursorUpdate", payload);
   });
 
@@ -73,13 +74,14 @@ function registerPresenceHandlers(io, socket) {
     if (!socket.rooms.has(msg.whiteboardId)) return; // must be in the board
     if (typeof msg.text !== "string" || !msg.text.trim()) return;
     // Normalize + cap to keep memory bounded; stamp a stable id for React keys.
+    // Use server-authoritative identity — never trust client-supplied user fields.
     const clean = {
-      id: `${socket.id}-${msg.time || ""}-${(chatHistory[msg.whiteboardId] || []).length}`,
+      id: `${socket.id}-${Date.now()}-${(chatHistory[msg.whiteboardId] || []).length}`,
       whiteboardId: msg.whiteboardId,
       text: msg.text.slice(0, 2000),
-      user: String(msg.user || "Guest").slice(0, 60),
-      userId: String(msg.userId || socket.id).slice(0, 64),
-      time: msg.time || new Date().toISOString(),
+      user: String(socket.user?.username || "Guest").slice(0, 60),
+      userId: String(socket.user?.userId || socket.id).slice(0, 64),
+      time: new Date().toISOString(),
     };
     const list = (chatHistory[clean.whiteboardId] ||= []);
     list.push(clean);
