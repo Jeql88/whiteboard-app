@@ -311,9 +311,17 @@ module.exports = function whiteboardRoutes(io) {
       ];
       if (!allIds.length) return res.json([]);
       const userDocs = await users
-        .find({ id: { $in: allIds } }, { projection: { id: 1, name: 1, email: 1 } })
+        .find(
+          { $or: [{ id: { $in: allIds } }, { _id: { $in: allIds.map((v) => toObjectId(v)).filter(Boolean) } }] },
+          { projection: { id: 1, name: 1, email: 1 } }
+        )
         .toArray();
-      const byId = Object.fromEntries(userDocs.map((u) => [u.id, u]));
+      // Index by both `id` (BetterAuth string id) and `_id` string so lookups hit regardless of which was stored.
+      const byId = {};
+      for (const u of userDocs) {
+        if (u.id) byId[u.id] = u;
+        if (u._id) byId[String(u._id)] = u;
+      }
       const result = [
         ...collabs.map((c) => ({
           userId: c.userId,
