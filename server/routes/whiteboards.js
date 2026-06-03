@@ -324,12 +324,13 @@ module.exports = function whiteboardRoutes(io) {
         })),
         ...visitors
           .filter((v) => !collabs.some((c) => c.userId === v))
+          .filter((v) => byId[v]?.email)  // skip visitors with no resolvable email
           .map((v) => ({
             userId: v,
             role: "visitor",
             addedAt: null,
-            name: byId[v]?.name || byId[v]?.email || v,
-            email: byId[v]?.email || "",
+            name: byId[v]?.name || "",
+            email: byId[v]?.email,
           })),
       ];
       res.json(result);

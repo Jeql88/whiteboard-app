@@ -206,10 +206,12 @@ const SharePanel = forwardRef(function SharePanel(
               <li key={v.userId} className="flex items-center gap-2">
                 <Avatar name={v.name || v.email} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-[var(--surface-text)]">{v.name || v.email}</p>
-                  <p className="truncate text-[10px] text-[var(--surface-muted)]">{v.email || v.userId}</p>
+                  {v.name && v.name !== v.email && (
+                    <p className="truncate text-xs font-medium text-[var(--surface-text)]">{v.name}</p>
+                  )}
+                  <p className="truncate text-xs text-[var(--surface-muted)]">{v.email}</p>
                 </div>
-                <span className="text-xs text-[var(--surface-muted)]">Visitor</span>
+                <span className="flex-shrink-0 text-xs text-[var(--surface-muted)]">Visitor</span>
               </li>
             ))}
           </ul>
