@@ -7,7 +7,12 @@
 const { MongoClient } = require("mongodb");
 const { MONGO_URI, DB_NAME } = require("./config");
 
-const client = new MongoClient(MONGO_URI);
+const client = new MongoClient(MONGO_URI, {
+  serverSelectionTimeoutMS: 5000,  // fail fast if Atlas is unreachable
+  connectTimeoutMS: 10000,
+  socketTimeoutMS: 45000,
+  maxPoolSize: 10,                 // one dyno doesn't need more; free Atlas caps at 500
+});
 const db = client.db(DB_NAME);
 
 const collections = {
@@ -41,6 +46,10 @@ async function connectDB() {
   await collections.whiteboards.createIndex({ visitors: 1 });
   // Content search across board name + extracted text (typed + OCR).
   await collections.whiteboards.createIndex({ textIndex: "text", name: "text" });
+  // Default dashboard sort — without this every list request is a full collection scan.
+  await collections.whiteboards.createIndex({ updatedAt: -1 });
+  // Comment listing per board.
+  await collections.comments.createIndex({ whiteboardId: 1, createdAt: 1 });
 
   console.log(`[db] Connected to MongoDB database "${DB_NAME}"`);
 }

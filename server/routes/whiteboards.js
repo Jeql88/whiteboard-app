@@ -4,9 +4,16 @@
 const express = require("express");
 const { ObjectId } = require("mongodb");
 const { authMiddleware } = require("../middleware/auth");
+const { rateLimit } = require("../middleware/rateLimit");
 const { getCollections } = require("../db");
 const { getActiveBoardIds, getActiveBoardUsers, clearBoardState } = require("../socket/presence");
 const { canAccessBoard, toObjectId } = require("../auth/boards");
+
+const byUser = (req) => req.user?.userId || req.ip;
+// Tighter limit for board creation (10/min per user).
+const createLimit = rateLimit({ windowMs: 60_000, max: 10, key: byUser });
+// General write limit for comments, collaborators, deletes (60/min per user).
+const writeLimit  = rateLimit({ windowMs: 60_000, max: 60, key: byUser });
 
 
 module.exports = function whiteboardRoutes(io) {
@@ -89,7 +96,7 @@ module.exports = function whiteboardRoutes(io) {
   });
 
   // Create a board.
-  router.post("/", authMiddleware, async (req, res) => {
+  router.post("/", authMiddleware, createLimit, async (req, res) => {
     const { whiteboards } = getCollections();
     const userId = req.user.userId;
 
@@ -157,7 +164,7 @@ module.exports = function whiteboardRoutes(io) {
   });
 
   // Delete a board + its scene snapshot + comments (owner only).
-  router.delete("/:id", authMiddleware, async (req, res) => {
+  router.delete("/:id", authMiddleware, writeLimit, async (req, res) => {
     if (!toObjectId(req.params.id)) return res.status(400).json({ error: "Invalid ID" });
     const { whiteboards, scenes, comments } = getCollections();
     const whiteboardId = req.params.id;
@@ -234,7 +241,7 @@ module.exports = function whiteboardRoutes(io) {
     res.json(result);
   });
 
-  router.post("/:id/comments", authMiddleware, async (req, res) => {
+  router.post("/:id/comments", authMiddleware, writeLimit, async (req, res) => {
     if (!(await ensureAccess(req, res))) return;
     const { comments } = getCollections();
     const whiteboardId = req.params.id;
@@ -356,7 +363,7 @@ module.exports = function whiteboardRoutes(io) {
   });
 
   // POST /:id/collaborators — owner adds a person by email.
-  router.post("/:id/collaborators", authMiddleware, async (req, res) => {
+  router.post("/:id/collaborators", authMiddleware, writeLimit, async (req, res) => {
     if (!toObjectId(req.params.id)) return res.status(400).json({ error: "Invalid ID" });
     const { whiteboards, users } = getCollections();
     const whiteboardId = req.params.id;
@@ -391,7 +398,7 @@ module.exports = function whiteboardRoutes(io) {
   });
 
   // PATCH /:id/collaborators/:userId — owner changes a collaborator's role.
-  router.patch("/:id/collaborators/:userId", authMiddleware, async (req, res) => {
+  router.patch("/:id/collaborators/:userId", authMiddleware, writeLimit, async (req, res) => {
     if (!toObjectId(req.params.id) || !req.params.userId?.trim()) return res.status(400).json({ error: "Invalid ID" });
     const { whiteboards } = getCollections();
     const whiteboardId = req.params.id;

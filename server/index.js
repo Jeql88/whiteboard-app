@@ -11,8 +11,9 @@ const cors = require("cors");
 const { Server } = require("socket.io");
 const { toNodeHandler } = require("better-auth/node");
 
+const compression = require("compression");
 const config = require("./config");
-const { connectDB, getCollections } = require("./db");
+const { connectDB, getCollections, client } = require("./db");
 const { initSocket } = require("./socket");
 const { auth } = require("./auth");
 const { toObjectId } = require("./auth/boards");
@@ -40,14 +41,23 @@ const io = new Server(server, {
 });
 
 app.use(cors({ origin: corsOrigin, credentials: true }));
+app.use(compression());
 
 // BetterAuth handler must come BEFORE express.json() — it reads the raw body itself.
 app.all("/api/auth/*splat", toNodeHandler(auth));
 
 app.use(express.json({ limit: "10mb" }));
 
-// Liveness probe for Render (registered before the SPA fallback).
-app.get("/healthz", (req, res) => res.sendStatus(200));
+// Liveness probe for Render — returns 503 if DB is unreachable so Render
+// restarts instead of routing traffic to a broken instance.
+app.get("/healthz", async (req, res) => {
+  try {
+    await client.db().admin().command({ ping: 1 }, { timeoutMS: 2000 });
+    res.sendStatus(200);
+  } catch {
+    res.sendStatus(503);
+  }
+});
 
 // REST API.
 app.use("/api/admin", adminRoutes());
@@ -99,6 +109,12 @@ app.get(/^\/(?!api|socket\.io).*/, (req, res) => {
   res.sendFile(indexHtmlPath);
 });
 
+// Catch-all error handler — prevents unhandled Express errors from leaking stack traces.
+app.use((err, req, res, next) => {
+  console.error("[error]", err.message);
+  if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+});
+
 initSocket(io);
 
 async function start() {
@@ -116,3 +132,18 @@ async function start() {
 }
 
 start();
+
+function shutdown(signal) {
+  console.log(`[shutdown] ${signal} — draining connections...`);
+  const fallback = setTimeout(() => process.exit(0), 8000).unref();
+  server.close(() => {
+    io.close(() => {
+      client.close().finally(() => {
+        clearTimeout(fallback);
+        process.exit(0);
+      });
+    });
+  });
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT",  () => shutdown("SIGINT"));

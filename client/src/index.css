@@ -73,3 +73,8 @@ body {
 .excalidraw .UserList-Wrapper {
   display: none !important;
 }
+
+/* Hide Excalidraw's library panel — not used in this app */
+.excalidraw .library-button {
+  display: none !important;
+}
