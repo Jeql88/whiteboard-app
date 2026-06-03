@@ -79,6 +79,7 @@ function registerSceneHandlers(io, socket) {
     if (!Array.isArray(elements)) return;
     // View-only guests cannot write scene updates.
     if (socket.user?.isGuest && socket.shareMode === "view") return;
+    if (!socket.user?.userId) return;
     const cleanAppState = sanitizeAppState(appState);
     const userId = socket.user.userId;
 
@@ -151,7 +152,6 @@ function registerSceneHandlers(io, socket) {
         { _id: new ObjectId(whiteboardId) },
         {
           $set: { updatedAt: new Date(), typedText, textIndex },
-          $addToSet: { editors: userId },
         }
       );
     } catch {

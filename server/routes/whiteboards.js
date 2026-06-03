@@ -62,6 +62,7 @@ module.exports = function whiteboardRoutes(io) {
 
   // Update share settings (owner only).
   router.patch("/:id/share", authMiddleware, async (req, res) => {
+    if (!toObjectId(req.params.id)) return res.status(400).json({ error: "Invalid ID" });
     const { whiteboards } = getCollections();
     const whiteboardId = req.params.id;
     const userId = req.user.userId;
@@ -101,6 +102,7 @@ module.exports = function whiteboardRoutes(io) {
 
   // Rename a board (owner only).
   router.patch("/:id", authMiddleware, async (req, res) => {
+    if (!toObjectId(req.params.id)) return res.status(400).json({ error: "Invalid ID" });
     const { whiteboards } = getCollections();
     const whiteboardId = req.params.id;
     const userId = req.user.userId;
@@ -127,6 +129,7 @@ module.exports = function whiteboardRoutes(io) {
   // Update a board's thumbnail (a small PNG data URL = last-seen scene).
   // Any editor (owner or collaborator) may set it. Capped to avoid bloat.
   router.put("/:id/thumbnail", authMiddleware, async (req, res) => {
+    if (!toObjectId(req.params.id)) return res.status(400).json({ error: "Invalid ID" });
     const { whiteboards } = getCollections();
     const whiteboardId = req.params.id;
     const userId = req.user.userId;
@@ -153,6 +156,7 @@ module.exports = function whiteboardRoutes(io) {
 
   // Delete a board + its scene snapshot + comments (owner only).
   router.delete("/:id", authMiddleware, async (req, res) => {
+    if (!toObjectId(req.params.id)) return res.status(400).json({ error: "Invalid ID" });
     const { whiteboards, scenes, comments } = getCollections();
     const whiteboardId = req.params.id;
     const userId = req.user.userId;
@@ -181,6 +185,7 @@ module.exports = function whiteboardRoutes(io) {
 
   // Duplicate a board (owner only) — copies metadata and scene snapshot.
   router.post("/:id/duplicate", authMiddleware, async (req, res) => {
+    if (!toObjectId(req.params.id)) return res.status(400).json({ error: "Invalid ID" });
     const { whiteboards, scenes } = getCollections();
     const userId = req.user.userId;
     const srcId = req.params.id;
@@ -258,21 +263,27 @@ module.exports = function whiteboardRoutes(io) {
     "/:id/comments/:commentId",
     authMiddleware,
     async (req, res) => {
-      const { comments } = getCollections();
-      const { id: whiteboardId, commentId } = req.params;
-      const userId = req.user.userId;
-      const result = await comments.deleteOne({
-        _id: new ObjectId(commentId),
-        whiteboardId,
-        userId,
-      });
-      if (result.deletedCount === 0) {
-        return res
-          .status(404)
-          .json({ error: "Comment not found or unauthorized" });
+      if (!toObjectId(req.params.commentId)) return res.status(400).json({ error: "Invalid ID" });
+      try {
+        const { comments } = getCollections();
+        const { id: whiteboardId, commentId } = req.params;
+        const userId = req.user.userId;
+        const result = await comments.deleteOne({
+          _id: new ObjectId(commentId),
+          whiteboardId,
+          userId,
+        });
+        if (result.deletedCount === 0) {
+          return res
+            .status(404)
+            .json({ error: "Comment not found or unauthorized" });
+        }
+        res.json({ success: true });
+        io.to(whiteboardId).emit("deleteComment", { _id: commentId });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Server error" });
       }
-      res.json({ success: true });
-      io.to(whiteboardId).emit("deleteComment", { _id: commentId });
     }
   );
 

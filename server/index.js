@@ -24,7 +24,8 @@ const app = express();
 app.set("trust proxy", 1);
 const server = http.createServer(app);
 
-const corsOrigin = config.CLIENT_ORIGIN || true;
+// Fall back to localhost in dev; never open wildcard (true) with credentials.
+const corsOrigin = config.CLIENT_ORIGIN || "http://localhost:5173";
 
 const io = new Server(server, {
   cors: { origin: corsOrigin, credentials: true, methods: ["GET", "POST", "PATCH", "DELETE"] },
