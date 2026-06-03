@@ -33,7 +33,6 @@ import { API_BASE } from "../../api/config";
 import { updateWhiteboard, saveThumbnail, extractText, updateShareSettings, getCollaborators } from "../../api/whiteboard";
 import { useTheme } from "../../theme/ThemeContext";
 import { getColorForName, getInitials } from "../../utils/userColor";
-import { counterInvertDataUrl } from "../../utils/imageFilter";
 import CommentsSidebar from "./CommentsSidebar";
 import ChatBox from "../Chatbox";
 import Minimap from "./Minimap";
@@ -118,8 +117,6 @@ export default function WhiteboardEditor() {
   const applyTimer = useRef(null);
   const cursorThrottle = useRef(0);
   const remoteCursors = useRef(new Map()); // socketId -> collaborator pointer
-  // fileId -> { original, inverted } dataURLs, for dark-mode image correction.
-  const imageVariants = useRef(new Map());
 
   const { data: session } = useSession();
 
@@ -302,13 +299,11 @@ export default function WhiteboardEditor() {
     s.on("whiteboardUsers", (users) => setCollaborators(users || []));
   };  // end wireSocket
 
-  // Cleanup timers and image cache on unmount / board change.
+  // Cleanup timers on unmount / board change.
   useEffect(() => {
-    const variants = imageVariants.current;
     return () => {
       clearTimeout(sceneTimer.current);
       clearTimeout(applyTimer.current);
-      variants.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [whiteboardId]);
@@ -341,44 +336,10 @@ export default function WhiteboardEditor() {
           /* quota / serialization — non-critical */
         }
       }, SCENE_DEBOUNCE_MS);
-      // Keep image dark-mode correction in sync as files come/go.
-      syncImageVariants();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [socket, whiteboardId, theme]
+    [socket, whiteboardId]
   );
-
-  // Ensure each image file displays correctly for the current theme: cache the
-  // original + a counter-inverted variant, and push the theme-appropriate one
-  // (inverted in dark so Excalidraw's canvas invert cancels back to true color).
-  const syncImageVariants = useCallback(async () => {
-    const api = apiRef.current;
-    if (!api) return;
-    const files = api.getFiles() || {};
-    for (const [fileId, file] of Object.entries(files)) {
-      if (!file?.dataURL) continue;
-      let variant = imageVariants.current.get(fileId);
-      if (!variant) {
-        // First time we see this file: the current dataURL is the "original"
-        // (unless it's already a remote-applied variant — best effort).
-        variant = { original: file.dataURL, inverted: null };
-        imageVariants.current.set(fileId, variant);
-        variant.inverted = await counterInvertDataUrl(file.dataURL);
-      }
-      const want = theme === "dark" ? variant.inverted : variant.original;
-      if (want && file.dataURL !== want) {
-        isApplyingRemote.current = true;
-        api.addFiles([{ ...file, dataURL: want }]);
-        clearTimeout(applyTimer.current);
-        applyTimer.current = setTimeout(() => (isApplyingRemote.current = false), 80);
-      }
-    }
-  }, [theme]);
-
-  // Re-apply the correct image variant whenever the theme changes.
-  useEffect(() => {
-    syncImageVariants();
-  }, [theme, syncImageVariants]);
 
   // --- Local pointer → throttled cursor broadcast ---
   const handlePointer = useCallback(

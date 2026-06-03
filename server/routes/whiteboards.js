@@ -309,6 +309,7 @@ module.exports = function whiteboardRoutes(io) {
         ...collabs.map((c) => c.userId),
         ...visitors.filter((v) => !collabs.some((c) => c.userId === v)),
       ];
+      console.log("[collaborators] visitors raw:", visitors, "allIds:", allIds);
       if (!allIds.length) return res.json([]);
       const userDocs = await users
         .find(
@@ -316,6 +317,7 @@ module.exports = function whiteboardRoutes(io) {
           { projection: { id: 1, name: 1, email: 1 } }
         )
         .toArray();
+      console.log("[collaborators] userDocs found:", userDocs.map((u) => ({ id: u.id, _id: u._id, name: u.name, email: u.email })));
       // Index by both `id` (BetterAuth string id) and `_id` string so lookups hit regardless of which was stored.
       const byId = {};
       for (const u of userDocs) {
