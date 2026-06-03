@@ -614,16 +614,14 @@ export default function WhiteboardEditor() {
         />
 
         {isGuest && (
-          <span className="flex items-center gap-1.5 rounded-md bg-accent-500/15 px-2 py-0.5 text-xs font-medium text-accent-600">
-            {isViewOnly ? <Lock size={11} /> : null}
-            {isViewOnly ? "View only" : "Guest"}
-            <a
-              href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}
-              className="flex items-center gap-0.5 font-semibold underline underline-offset-2 hover:text-accent-700"
-            >
-              <LogIn size={11} /> Sign in
-            </a>
-          </span>
+          <a
+            href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent-500/15 px-2 py-1 text-xs font-medium text-accent-600 hover:bg-accent-500/25 transition-colors"
+            title={isViewOnly ? "View only — sign in to edit" : "Viewing as guest — sign in"}
+          >
+            {isViewOnly ? <Lock size={12} /> : <LogIn size={12} />}
+            <span className="hidden sm:inline">{isViewOnly ? "View only" : "Sign in"}</span>
+          </a>
         )}
 
         <div className="flex-1" />
