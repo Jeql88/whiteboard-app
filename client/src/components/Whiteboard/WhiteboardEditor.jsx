@@ -771,9 +771,11 @@ export default function WhiteboardEditor() {
             <MainMenu.Item onSelect={zoomToFit} icon={<Maximize size={16} />}>
               Zoom to fit
             </MainMenu.Item>
-            <MainMenu.Item onSelect={extractTextNow} icon={<ScanText size={16} />}>
-              Extract text (OCR)
-            </MainMenu.Item>
+            {!isGuest && (
+              <MainMenu.Item onSelect={extractTextNow} icon={<ScanText size={16} />}>
+                Extract text (OCR)
+              </MainMenu.Item>
+            )}
             <MainMenu.Item onSelect={toggleGrid} icon={<Grid3x3 size={16} />}>
               {gridMode ? "Hide grid" : "Show grid"}
             </MainMenu.Item>
