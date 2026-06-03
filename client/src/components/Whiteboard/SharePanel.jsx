@@ -197,30 +197,19 @@ const SharePanel = forwardRef(function SharePanel(
         </ul>
       </div>
 
-      {/* Visited via link */}
-      {(isOwner ? visitors.length > 0 : visitors.some((v) => v.userId === currentUserId)) && (
+      {/* Visited via link — owner sees all, read-only (no remove: they can just rejoin) */}
+      {isOwner && visitors.length > 0 && (
         <div className="mb-4">
           <p className={sectionLabel}>Visited via link</p>
           <ul className="space-y-1.5">
-            {(isOwner ? visitors : visitors.filter((v) => v.userId === currentUserId)).map((v) => (
+            {visitors.map((v) => (
               <li key={v.userId} className="flex items-center gap-2">
                 <Avatar name={v.name || v.email} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-[var(--surface-text)]">{v.name || v.email}</p>
-                  {v.name && v.email && (
-                    <p className="truncate text-[10px] text-[var(--surface-muted)]">{v.email}</p>
-                  )}
+                  <p className="truncate text-[10px] text-[var(--surface-muted)]">{v.email || v.userId}</p>
                 </div>
                 <span className="text-xs text-[var(--surface-muted)]">Visitor</span>
-                {(isOwner || v.userId === currentUserId) && (
-                  <button
-                    onClick={() => handleRemove(v.userId)}
-                    className="text-[var(--surface-muted)] hover:text-red-500"
-                    title={v.userId === currentUserId ? "Remove from my boards" : "Remove"}
-                  >
-                    <X size={13} />
-                  </button>
-                )}
               </li>
             ))}
           </ul>
