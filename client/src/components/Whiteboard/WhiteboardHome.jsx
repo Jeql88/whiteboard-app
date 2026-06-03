@@ -34,7 +34,7 @@ export default function WhiteboardHome() {
   const [showPopup, setShowPopup] = useState(false);
   const [createError, setCreateError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [activeBoards, setActiveBoards] = useState([]);
+  const [activeUsers, setActiveUsers] = useState({}); // boardId -> [{ userId, username }]
   const [sortBy, setSortBy] = useState("updatedAt");
   const [filterBy, setFilterBy] = useState("all");
   const [ownedVisible, setOwnedVisible] = useState(PAGE_SIZE);
@@ -47,7 +47,10 @@ export default function WhiteboardHome() {
 
   useEffect(() => {
     let alive = true;
-    const load = () => getActiveBoards().then((ids) => alive && setActiveBoards(ids));
+    const load = () =>
+      getActiveBoards().then(({ users }) => {
+        if (alive) setActiveUsers(users);
+      });
     load();
     const t = setInterval(load, 15000);
     return () => { alive = false; clearInterval(t); };
@@ -280,7 +283,7 @@ export default function WhiteboardHome() {
                     onDelete={handleDelete}
                     onRename={handleRename}
                     onDuplicate={handleDuplicate}
-                    isActive={activeBoards.includes(wb._id)}
+                    activeUsers={activeUsers[wb._id]}
                   />
                 ))}
               </div>
@@ -305,7 +308,7 @@ export default function WhiteboardHome() {
                     onDelete={handleDelete}
                     onRename={handleRename}
                     onDuplicate={handleDuplicate}
-                    isActive={activeBoards.includes(wb._id)}
+                    activeUsers={activeUsers[wb._id]}
                   />
                 ))}
               </div>

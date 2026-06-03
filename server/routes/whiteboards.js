@@ -5,7 +5,7 @@ const express = require("express");
 const { ObjectId } = require("mongodb");
 const { authMiddleware } = require("../middleware/auth");
 const { getCollections } = require("../db");
-const { getActiveBoardIds, clearBoardState } = require("../socket/presence");
+const { getActiveBoardIds, getActiveBoardUsers, clearBoardState } = require("../socket/presence");
 const { canAccessBoard, toObjectId } = require("../auth/boards");
 
 
@@ -33,10 +33,12 @@ module.exports = function whiteboardRoutes(io) {
     res.json(boards);
   });
 
-  // Board ids with someone currently present (for the dashboard "live" badge).
-  // Registered before /:id so it isn't captured as an id param.
+  // Presence for the dashboard cards. `active` keeps the legacy id array;
+  // `users` maps boardId -> [{ userId, username }] so each card can render the
+  // avatars of who's currently on it. Registered before /:id so it isn't
+  // captured as an id param.
   router.get("/active", authMiddleware, (req, res) => {
-    res.json({ active: getActiveBoardIds() });
+    res.json({ active: getActiveBoardIds(), users: getActiveBoardUsers() });
   });
 
   // Public board info (no auth) — used by the editor to show board name + access level
@@ -309,7 +311,6 @@ module.exports = function whiteboardRoutes(io) {
         ...collabs.map((c) => c.userId),
         ...visitors.filter((v) => !collabs.some((c) => c.userId === v)),
       ];
-      console.log("[collaborators] visitors raw:", visitors, "allIds:", allIds);
       if (!allIds.length) return res.json([]);
       const userDocs = await users
         .find(
@@ -317,7 +318,6 @@ module.exports = function whiteboardRoutes(io) {
           { projection: { id: 1, name: 1, email: 1 } }
         )
         .toArray();
-      console.log("[collaborators] userDocs found:", userDocs.map((u) => ({ id: u.id, _id: u._id, name: u.name, email: u.email })));
       // Index by both `id` (BetterAuth string id) and `_id` string so lookups hit regardless of which was stored.
       const byId = {};
       for (const u of userDocs) {

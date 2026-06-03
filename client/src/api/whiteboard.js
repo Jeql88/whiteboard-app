@@ -8,7 +8,10 @@ export function getWhiteboards() {
 
 export async function getActiveBoards() {
   const data = await apiFetch(`${WB}/active`);
-  return Array.isArray(data.active) ? data.active : [];
+  return {
+    active: Array.isArray(data.active) ? data.active : [],
+    users: data.users && typeof data.users === "object" ? data.users : {},
+  };
 }
 
 export function createWhiteboard(name) {

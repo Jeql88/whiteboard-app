@@ -25,17 +25,14 @@ async function connectDB() {
   collections.whiteboards = db.collection("whiteboards");
   collections.scenes = db.collection("scenes");
   collections.comments = db.collection("comments");
-  collections.users = db.collection("users");
+  // BetterAuth's mongo-adapter stores users in the SINGULAR "user" collection
+  // (its default model name), not "users". Pointing here is essential: collab
+  // lookups, the share "People with access" list, and admin user management all
+  // resolve accounts through this handle.
+  collections.users = db.collection("user");
 
   // One snapshot doc per board — enforce + speed up lookups by whiteboardId.
   await collections.scenes.createIndex({ whiteboardId: 1 }, { unique: true });
-
-  // Email is the reset identifier — unique when present. `sparse` allows
-  // pre-existing accounts that have no email yet.
-  await collections.users.createIndex(
-    { email: 1 },
-    { unique: true, sparse: true }
-  );
 
   // Dashboard lists boards by owner OR editor OR collaborator OR visitor.
   await collections.whiteboards.createIndex({ userId: 1 });

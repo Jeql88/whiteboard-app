@@ -21,6 +21,21 @@ function getActiveBoardIds() {
   return ids;
 }
 
+// Map of active boardId -> distinct present users [{ userId, username }].
+// Powers the dashboard cards' presence avatars. Deduped by userId so multi-tab
+// users count once.
+function getActiveBoardUsers() {
+  const map = {};
+  for (const [boardId, users] of Object.entries(whiteboardUsers)) {
+    const byUser = new Map();
+    for (const u of users) {
+      if (!byUser.has(u.userId)) byUser.set(u.userId, { userId: u.userId, username: u.username });
+    }
+    if (byUser.size > 0) map[boardId] = Array.from(byUser.values());
+  }
+  return map;
+}
+
 function getChatHistory(whiteboardId) {
   return chatHistory[whiteboardId] || [];
 }
@@ -141,6 +156,7 @@ function registerPresenceHandlers(io, socket) {
 module.exports = {
   registerPresenceHandlers,
   getActiveBoardIds,
+  getActiveBoardUsers,
   getChatHistory,
   clearBoardState,
   whiteboardUsers,

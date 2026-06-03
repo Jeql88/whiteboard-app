@@ -4,8 +4,9 @@ import { MoreHorizontal, Pencil, Trash2, Copy, ExternalLink, Lock, ShieldCheck }
 import { formatDistanceToNow } from "date-fns";
 import { useSession } from "../../lib/auth-client";
 import { deleteWhiteboard, updateWhiteboard, duplicateWhiteboard } from "../../api/whiteboard";
+import { getColorForName, getInitials } from "../../utils/userColor";
 
-export default function WhiteboardCard({ whiteboard, onDelete, onRename, onDuplicate, isActive }) {
+export default function WhiteboardCard({ whiteboard, onDelete, onRename, onDuplicate, activeUsers }) {
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [newName, setNewName] = useState(whiteboard.name);
@@ -59,15 +60,8 @@ export default function WhiteboardCard({ whiteboard, onDelete, onRename, onDupli
         }}
         className="group relative flex h-48 cursor-pointer flex-col overflow-hidden rounded-card border border-[var(--surface-border)] bg-[var(--surface-card)] transition-shadow hover:shadow-md"
       >
-        {isActive && (
-          <span className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-green-500/95 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-            live
-          </span>
-        )}
-
         {/* Thumbnail — 75% of card height */}
-        <div className="flex flex-[3] items-center justify-center overflow-hidden bg-white">
+        <div className="relative flex flex-[3] items-center justify-center overflow-hidden bg-white">
           {whiteboard.thumbnail ? (
             <img
               src={whiteboard.thumbnail}
@@ -84,6 +78,27 @@ export default function WhiteboardCard({ whiteboard, onDelete, onRename, onDupli
                 backgroundSize: "16px 16px",
               }}
             />
+          )}
+
+          {/* Presence — avatars of people currently on this board (bottom right) */}
+          {Array.isArray(activeUsers) && activeUsers.length > 0 && (
+            <div className="absolute bottom-1.5 right-1.5 flex -space-x-1.5">
+              {activeUsers.slice(0, 4).map((u) => (
+                <div
+                  key={u.userId}
+                  title={u.username}
+                  className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white text-[9px] font-semibold text-white shadow-sm"
+                  style={{ background: getColorForName(u.username) }}
+                >
+                  {getInitials(u.username)}
+                </div>
+              ))}
+              {activeUsers.length > 4 && (
+                <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-slate-500 text-[9px] font-semibold text-white shadow-sm">
+                  +{activeUsers.length - 4}
+                </div>
+              )}
+            </div>
           )}
         </div>
 

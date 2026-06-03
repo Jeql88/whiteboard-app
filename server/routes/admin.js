@@ -121,7 +121,10 @@ router.delete("/users/:id", async (req, res) => {
     if (targetId === req.user.userId) {
       return res.status(400).json({ error: "Cannot delete your own account" });
     }
-    await users.deleteOne({ id: targetId });
+    // BetterAuth user docs key on _id (ObjectId), with no separate `id` field.
+    // Match by either so deletion works regardless of how the id was passed.
+    const oid = (() => { try { return new ObjectId(targetId); } catch { return null; } })();
+    await users.deleteOne({ $or: [{ id: targetId }, ...(oid ? [{ _id: oid }] : [])] });
     res.json({ success: true });
   } catch (err) {
     console.error("[admin] delete user error:", err);
