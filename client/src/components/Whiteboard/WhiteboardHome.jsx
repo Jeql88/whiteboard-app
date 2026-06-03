@@ -103,6 +103,7 @@ export default function WhiteboardHome() {
   );
 
   const ownedBoards = useMemo(() => {
+    if (!currentUserId) return [];
     const owned = filteredBoards.filter((wb) => wb.userId === currentUserId);
     const filtered =
       filterBy === "shared"
@@ -114,13 +115,9 @@ export default function WhiteboardHome() {
   }, [filteredBoards, currentUserId, filterBy, sortBoards]);
 
   const sharedBoards = useMemo(() => {
+    if (!currentUserId) return [];
     const shared = filteredBoards.filter((wb) => wb.userId !== currentUserId);
-    const filtered =
-      filterBy === "solo"
-        ? []
-        : filterBy === "shared" || filterBy === "all"
-        ? shared
-        : shared;
+    const filtered = filterBy === "solo" ? [] : shared;
     return sortBoards(filtered);
   }, [filteredBoards, currentUserId, filterBy, sortBoards]);
 

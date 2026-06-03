@@ -54,6 +54,7 @@ const SharePanel = forwardRef(function SharePanel(
       setAddError(data.error);
       return;
     }
+    if (!data.userId) return;
     setBoardCollaborators((prev) => [...prev, data]);
     setAddEmail("");
   };
@@ -66,11 +67,11 @@ const SharePanel = forwardRef(function SharePanel(
   };
 
   const handleRoleChange = async (userId, role) => {
+    const prev = boardCollaborators.find((c) => c.userId === userId)?.role;
+    setBoardCollaborators((cs) => cs.map((c) => (c.userId === userId ? { ...c, role } : c)));
     const data = await updateCollaboratorRole(whiteboardId, userId, role);
-    if (!data.error) {
-      setBoardCollaborators((prev) =>
-        prev.map((c) => (c.userId === userId ? { ...c, role } : c))
-      );
+    if (data.error) {
+      setBoardCollaborators((cs) => cs.map((c) => (c.userId === userId ? { ...c, role: prev } : c)));
     }
   };
 

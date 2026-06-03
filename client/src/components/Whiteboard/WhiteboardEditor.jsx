@@ -84,6 +84,10 @@ export default function WhiteboardEditor() {
   const [showSharePanel, setShowSharePanel] = useState(false);
   const [ownerId, setOwnerId] = useState(null);
   const [boardCollaborators, setBoardCollaborators] = useState([]);
+  const [followedSocketId, setFollowedSocketId] = useState(null);
+  const followedSocketIdRef = useRef(null);
+  followedSocketIdRef.current = followedSocketId;
+
   const [gridMode, setGridMode] = useState(
     () => localStorage.getItem("wb-grid") === "1"
   );
@@ -256,11 +260,27 @@ export default function WhiteboardEditor() {
         button: p.button || "up",
         color: { background: p.color, stroke: p.color },
         selectedElementIds,
+        // Store viewport so follow-camera can apply it.
+        scrollX: p.scrollX,
+        scrollY: p.scrollY,
+        zoom: p.zoom,
       });
       apiRef.current?.updateScene({
         collaborators: new Map(remoteCursors.current),
         captureUpdate: CaptureUpdateAction.NEVER,
       });
+      // Follow-camera: if we're following this socket, apply their viewport.
+      if (followedSocketIdRef.current === p.socketId && apiRef.current &&
+          p.scrollX != null && p.scrollY != null && p.zoom != null) {
+        apiRef.current.updateScene({
+          appState: {
+            scrollX: p.scrollX,
+            scrollY: p.scrollY,
+            zoom: { value: p.zoom },
+          },
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+      }
     });
     s.on("cursorLeave", ({ socketId }) => {
       remoteCursors.current.delete(socketId);
@@ -268,6 +288,14 @@ export default function WhiteboardEditor() {
         collaborators: new Map(remoteCursors.current),
         captureUpdate: CaptureUpdateAction.NEVER,
       });
+      // Stop following if the user we were following disconnected.
+      if (followedSocketIdRef.current === socketId) {
+        setFollowedSocketId(null);
+        apiRef.current?.updateScene({
+          appState: { userToFollow: null },
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+      }
     });
 
     // Presence avatar list.
@@ -359,11 +387,8 @@ export default function WhiteboardEditor() {
       const now = performance.now();
       if (now - cursorThrottle.current < CURSOR_THROTTLE_MS) return;
       cursorThrottle.current = now;
-      // Include the current selection so peers can see what each user has
-      // selected (Excalidraw renders collaborator selections natively).
-      const sel = apiRef.current
-        ? Object.keys(apiRef.current.getAppState().selectedElementIds || {})
-        : [];
+      const appState = apiRef.current?.getAppState();
+      const sel = appState ? Object.keys(appState.selectedElementIds || {}) : [];
       socket.emit("cursorUpdate", {
         whiteboardId,
         socketId: socket.id,
@@ -373,6 +398,9 @@ export default function WhiteboardEditor() {
         y: pointer.y,
         color: getColorForName(me.username),
         selectedElementIds: sel,
+        scrollX: appState?.scrollX,
+        scrollY: appState?.scrollY,
+        zoom: appState?.zoom?.value,
       });
     },
     [socket, whiteboardId, me]
@@ -638,20 +666,38 @@ export default function WhiteboardEditor() {
 
         <div className="flex-1" />
 
-        {/* Presence avatars (deduped by userId, defensive against dup sockets) */}
+        {/* Presence avatars (deduped by userId, exclude self, clickable to follow camera) */}
         <div className="mr-1 flex -space-x-2">
           {[...new Map(collaborators.map((u) => [u.userId, u])).values()]
+            .filter((u) => u.userId !== me.userId)
             .slice(0, 5)
-            .map((u) => (
-              <div
-                key={u.userId}
-                title={u.username}
-                className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[var(--surface-card)] text-[11px] font-semibold text-white"
-                style={{ background: getColorForName(u.username) }}
-              >
-                {getInitials(u.username)}
-              </div>
-            ))}
+            .map((u) => {
+              const isFollowing = followedSocketId === u.socketId;
+              return (
+                <div
+                  key={u.userId}
+                  title={isFollowing ? `Following ${u.username} — click to unfollow` : `Follow ${u.username}'s camera`}
+                  onClick={() => {
+                    const api = apiRef.current;
+                    if (!api) return;
+                    const next = isFollowing ? null : u.socketId;
+                    setFollowedSocketId(next);
+                    api.updateScene({
+                      appState: { userToFollow: next ? { socketId: u.socketId, username: u.username } : null },
+                      captureUpdate: CaptureUpdateAction.NEVER,
+                    });
+                  }}
+                  className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-2 text-[11px] font-semibold text-white transition-all ${
+                    isFollowing
+                      ? "border-brand-400 ring-2 ring-brand-400"
+                      : "border-[var(--surface-card)] hover:border-brand-400"
+                  }`}
+                  style={{ background: getColorForName(u.username) }}
+                >
+                  {getInitials(u.username)}
+                </div>
+              );
+            })}
         </div>
 
         {isGuest && (
@@ -737,6 +783,13 @@ export default function WhiteboardEditor() {
           viewModeEnabled={isViewOnly}
           onChange={handleChange}
           onPointerUpdate={handlePointer}
+          onUserFollow={(payload) => {
+            if (payload.action === "UNFOLLOW") {
+              setFollowedSocketId(null);
+            } else {
+              setFollowedSocketId(payload.userToFollow.socketId);
+            }
+          }}
           initialData={{
             appState: {
               viewBackgroundColor: "#ffffff",
