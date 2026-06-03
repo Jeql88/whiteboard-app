@@ -57,6 +57,9 @@ app.use("/api/whiteboards", ocrRoutes());
 // Static client build + SPA fallback.
 const clientDist = path.join(__dirname, "..", "client", "dist");
 const indexHtmlPath = path.join(clientDist, "index.html");
+// Cache at startup — avoids repeated fs.readFileSync allocations on every OG meta request.
+let indexHtmlCache = "";
+try { indexHtmlCache = fs.readFileSync(indexHtmlPath, "utf8"); } catch { /* built client not present in dev */ }
 
 // Dynamic OG meta for whiteboard share links — must come before express.static
 // so bots/unfurlers get board-specific titles and thumbnails.
@@ -74,9 +77,8 @@ app.get("/whiteboard/:id", async (req, res, next) => {
     const name = esc(board.name || "Whiteboard");
     const image = board.thumbnail || `${config.BETTER_AUTH_URL}/og.png`;
     const url = `${config.BETTER_AUTH_URL}/whiteboard/${req.params.id}`;
-    const indexHtml = fs.readFileSync(indexHtmlPath, "utf8");
     // Inject dynamic tags right after <head> — first og: tag wins in most parsers.
-    const html = indexHtml.replace(
+    const html = indexHtmlCache.replace(
       "<head>",
       `<head>
     <meta property="og:title" content="${name} — Whitebored" />
