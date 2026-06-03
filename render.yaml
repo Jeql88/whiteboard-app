@@ -20,7 +20,7 @@ services:
       - key: BETTER_AUTH_URL
         value: https://whiteboard-app-8loo.onrender.com
       - key: CLIENT_ORIGIN
-        sync: false
+        value: https://whiteboard-app-8loo.onrender.com
       - key: RESEND_API_KEY
         sync: false
       - key: MAIL_FROM
