@@ -130,11 +130,19 @@ function registerSceneHandlers(io, socket) {
     // Derive searchable typed text from text elements (free, no OCR).
     const typedText = typedTextOf(merged.elements);
 
-    // Broadcast the MERGED scene so all clients converge on the same set.
+    // Broadcast the merged elements to all peers. Only include files that were
+    // in the incoming payload — files are immutable content-addressed blobs, so
+    // peers already have everything previously broadcast; no need to resend MBs
+    // of images on every keystroke.
+    const incomingFileKeys = new Set(Object.keys(files || {}));
+    const newFiles = {};
+    for (const key of incomingFileKeys) {
+      if (merged.files[key]) newFiles[key] = merged.files[key];
+    }
     socket.to(whiteboardId).emit("sceneUpdate", {
       elements: merged.elements,
       appState: cleanAppState,
-      files: merged.files,
+      files: newFiles,
     });
 
     try {

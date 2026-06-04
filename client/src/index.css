@@ -78,3 +78,13 @@ body {
 .excalidraw .library-button {
   display: none !important;
 }
+
+/* Hide extra-tools trigger (shapes library dropdown, far right of toolbar) */
+.excalidraw .App-toolbar__extra-tools-trigger {
+  display: none !important;
+}
+
+/* Hide the default sidebar trigger (book icon, upper-right) */
+.excalidraw .default-sidebar-trigger {
+  display: none !important;
+}

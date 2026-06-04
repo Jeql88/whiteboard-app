@@ -9,6 +9,7 @@ async function authMiddleware(req, res, next) {
     req.user = {
       userId: session.user.id,
       username: session.user.username || session.user.name || session.user.email,
+      role: session.user.role || "user",
     };
     next();
   } catch {
@@ -33,6 +34,7 @@ async function socketAuth(socket, next) {
       socket.user = {
         userId: session.user.id,
         username: session.user.username || session.user.name || session.user.email,
+        role: session.user.role || "user",
         isGuest: false,
       };
       return next();
@@ -45,16 +47,11 @@ async function socketAuth(socket, next) {
   next();
 }
 
-// Admin middleware: must follow authMiddleware. Checks userId against the
-// comma-separated ADMIN_USER_IDS env var.
-const ADMIN_IDS = (process.env.ADMIN_USER_IDS || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
+// Admin middleware: must follow authMiddleware. Checks the role field set by
+// BetterAuth's admin plugin (stored in the database, not an env var).
 function adminMiddleware(req, res, next) {
   if (!req.user) return res.status(401).json({ error: "Not authenticated" });
-  if (!ADMIN_IDS.includes(req.user.userId)) {
+  if (req.user.role !== "admin") {
     return res.status(403).json({ error: "Admin access required" });
   }
   next();

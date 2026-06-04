@@ -90,21 +90,25 @@ router.get("/users", async (req, res) => {
         .toArray(),
     ]);
 
-    // Attach board count to each user
-    const withCounts = await Promise.all(
-      userList.map(async (u) => {
-        const uid = u.id || String(u._id);
-        const ownedBoards = await whiteboards.countDocuments({ userId: uid });
-        return {
-          id: uid,
-          name: u.name || u.username || "",
-          email: u.email || "",
-          emailVerified: !!u.emailVerified,
-          createdAt: u.createdAt,
-          ownedBoards,
-        };
-      })
-    );
+    // Single aggregation to count owned boards per user — avoids N+1 queries.
+    const userIds = userList.map((u) => u.id || String(u._id));
+    const boardCounts = await whiteboards.aggregate([
+      { $match: { userId: { $in: userIds } } },
+      { $group: { _id: "$userId", count: { $sum: 1 } } },
+    ]).toArray();
+    const countMap = Object.fromEntries(boardCounts.map((r) => [r._id, r.count]));
+
+    const withCounts = userList.map((u) => {
+      const uid = u.id || String(u._id);
+      return {
+        id: uid,
+        name: u.name || u.username || "",
+        email: u.email || "",
+        emailVerified: !!u.emailVerified,
+        createdAt: u.createdAt,
+        ownedBoards: countMap[uid] || 0,
+      };
+    });
 
     res.json({ users: withCounts, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
