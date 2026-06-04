@@ -18,9 +18,9 @@ services:
       - key: BETTER_AUTH_SECRET
         sync: false
       - key: BETTER_AUTH_URL
-        value: https://whiteboard-app-8loo.onrender.com
+        value: https://whitebored-production.up.railway.app
       - key: CLIENT_ORIGIN
-        value: https://whiteboard-app-8loo.onrender.com
+        value: https://whitebored-production.up.railway.app
       - key: RESEND_API_KEY
         sync: false
       - key: MAIL_FROM
