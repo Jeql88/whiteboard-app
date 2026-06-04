@@ -1,10 +1,8 @@
-// Monolith entry point.
+// API + Socket.IO server.
 //
-// One Node process = Express REST (/api/*) + Socket.IO (/socket.io) + the
-// static React build (client/dist). Deploys as a single Render Web Service.
+// One Node process = Express REST (/api/*) + Socket.IO (/socket.io).
+// Static frontend is served separately from Vercel.
 
-const path = require("path");
-const fs = require("fs");
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
@@ -16,13 +14,12 @@ const config = require("./config");
 const { connectDB, getCollections, client } = require("./db");
 const { initSocket } = require("./socket");
 const { auth } = require("./auth");
-const { toObjectId } = require("./auth/boards");
 const whiteboardRoutes = require("./routes/whiteboards");
 const ocrRoutes = require("./routes/ocr");
 const adminRoutes = require("./routes/admin");
 
 const app = express();
-// Render terminates TLS at a proxy; trust it so req.ip reflects the real client
+// Railway terminates TLS at a proxy; trust it so req.ip reflects the real client
 // (needed for rate limiting to key per-user, not per-proxy).
 app.set("trust proxy", 1);
 const server = http.createServer(app);
@@ -48,8 +45,7 @@ app.all("/api/auth/*splat", toNodeHandler(auth));
 
 app.use(express.json({ limit: "10mb" }));
 
-// Liveness probe for Render — returns 503 if DB is unreachable so Render
-// restarts instead of routing traffic to a broken instance.
+// Liveness probe — returns 503 if DB is unreachable.
 app.get("/healthz", async (req, res) => {
   try {
     await client.db().admin().command({ ping: 1 }, { timeoutMS: 2000 });
@@ -63,51 +59,6 @@ app.get("/healthz", async (req, res) => {
 app.use("/api/admin", adminRoutes());
 app.use("/api/whiteboards", whiteboardRoutes(io));
 app.use("/api/whiteboards", ocrRoutes());
-
-// Static client build + SPA fallback.
-const clientDist = path.join(__dirname, "..", "client", "dist");
-const indexHtmlPath = path.join(clientDist, "index.html");
-// Cache at startup — avoids repeated fs.readFileSync allocations on every OG meta request.
-let indexHtmlCache = "";
-try { indexHtmlCache = fs.readFileSync(indexHtmlPath, "utf8"); } catch { /* built client not present in dev */ }
-
-// Dynamic OG meta for whiteboard share links — must come before express.static
-// so bots/unfurlers get board-specific titles and thumbnails.
-app.get("/whiteboard/:id", async (req, res, next) => {
-  try {
-    const _id = toObjectId(req.params.id);
-    if (!_id) return next();
-    const { whiteboards } = getCollections();
-    const board = await whiteboards.findOne(
-      { _id },
-      { projection: { name: 1, thumbnail: 1 } }
-    );
-    if (!board) return next();
-    const esc = (s) => String(s || "").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-    const name = esc(board.name || "Whiteboard");
-    const image = board.thumbnail || `${config.BETTER_AUTH_URL}/og.png`;
-    const url = `${config.BETTER_AUTH_URL}/whiteboard/${req.params.id}`;
-    // Inject dynamic tags right after <head> — first og: tag wins in most parsers.
-    const html = indexHtmlCache.replace(
-      "<head>",
-      `<head>
-    <meta property="og:title" content="${name} — Whitebored" />
-    <meta property="og:description" content="Join ${name} on Whitebored — real-time collaborative whiteboard" />
-    <meta property="og:url" content="${url}" />
-    <meta property="og:image" content="${image}" />
-    <meta name="twitter:title" content="${name} — Whitebored" />
-    <meta name="twitter:image" content="${image}" />`
-    );
-    res.type("html").send(html);
-  } catch {
-    next();
-  }
-});
-
-app.use(express.static(clientDist));
-app.get(/^\/(?!api|socket\.io).*/, (req, res) => {
-  res.sendFile(indexHtmlPath);
-});
 
 // Catch-all error handler — prevents unhandled Express errors from leaking stack traces.
 app.use((err, req, res, next) => {
