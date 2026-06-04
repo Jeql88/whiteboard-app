@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Trash2, ExternalLink, ScanText, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { Search, Trash2, ExternalLink, ScanText, ChevronLeft, ChevronRight } from "lucide-react";
 import { getAdminBoards, deleteAdminBoard } from "../../api/admin";
 import { formatDistanceToNow } from "date-fns";
 
@@ -44,7 +44,7 @@ export default function AdminBoards() {
             </span>
           )}
         </div>
-        <div className="relative w-64">
+        <div className="relative w-full max-w-xs">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--surface-muted)]" />
           <input
             value={search}
@@ -79,8 +79,8 @@ export default function AdminBoards() {
                 </div>
                 <p className="text-xs text-[var(--surface-muted)] truncate">{b.ownerName}</p>
               </div>
-              {/* Hover actions */}
-              <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              {/* Actions — always visible on mobile, hover-reveal on desktop */}
+              <div className="absolute right-2 top-2 flex gap-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
                 <button
                   onClick={() => navigate(`/whiteboard/${b.id}`)}
                   className="rounded-md bg-[var(--surface-card)]/90 p-1.5 text-[var(--surface-muted)] shadow hover:text-brand-600"
@@ -96,12 +96,6 @@ export default function AdminBoards() {
                   <Trash2 size={14} />
                 </button>
               </div>
-              {/* Editors badge */}
-              {b.editorsCount > 0 && (
-                <span className="absolute left-2 top-2 rounded-full bg-brand-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                  +{b.editorsCount}
-                </span>
-              )}
             </div>
           ))}
         </div>

@@ -28,9 +28,9 @@ export default function AdminUsers({ onFilterBoards }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-lg font-semibold text-[var(--surface-text)]">Users</h2>
-        <div className="relative w-64">
+        <div className="relative w-full max-w-xs">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--surface-muted)]" />
           <input
             value={search}
@@ -41,13 +41,13 @@ export default function AdminUsers({ onFilterBoards }) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-card border border-[var(--surface-border)]">
+      <div className="overflow-x-auto rounded-card border border-[var(--surface-border)]">
         <table className="w-full text-sm">
           <thead className="border-b border-[var(--surface-border)] bg-[var(--surface-bg)]">
             <tr>
               <th className="px-4 py-3 text-left font-semibold text-[var(--surface-muted)]">User</th>
-              <th className="px-4 py-3 text-left font-semibold text-[var(--surface-muted)]">Joined</th>
-              <th className="px-4 py-3 text-center font-semibold text-[var(--surface-muted)]">Verified</th>
+              <th className="hidden sm:table-cell px-4 py-3 text-left font-semibold text-[var(--surface-muted)]">Joined</th>
+              <th className="hidden sm:table-cell px-4 py-3 text-center font-semibold text-[var(--surface-muted)]">Verified</th>
               <th className="px-4 py-3 text-center font-semibold text-[var(--surface-muted)]">Boards</th>
               <th className="px-4 py-3 text-right font-semibold text-[var(--surface-muted)]">Actions</th>
             </tr>
@@ -63,10 +63,10 @@ export default function AdminUsers({ onFilterBoards }) {
                   <p className="font-medium text-[var(--surface-text)]">{u.name || "—"}</p>
                   <p className="text-xs text-[var(--surface-muted)]">{u.email}</p>
                 </td>
-                <td className="px-4 py-3 text-[var(--surface-muted)]">
+                <td className="hidden sm:table-cell px-4 py-3 text-[var(--surface-muted)]">
                   {u.createdAt ? formatDistanceToNow(new Date(u.createdAt)) + " ago" : "—"}
                 </td>
-                <td className="px-4 py-3 text-center">
+                <td className="hidden sm:table-cell px-4 py-3 text-center">
                   {u.emailVerified
                     ? <CheckCircle size={16} className="mx-auto text-green-500" />
                     : <XCircle size={16} className="mx-auto text-[var(--surface-muted)]" />}

@@ -6,6 +6,7 @@ const { ObjectId } = require("mongodb");
 const { authMiddleware, adminMiddleware } = require("../middleware/auth");
 const { getCollections } = require("../db");
 const { getActiveBoardIds, whiteboardUsers } = require("../socket/presence");
+const { toObjectId } = require("../auth/boards");
 
 // Both middleware applied to every admin route via router-level use().
 const router = express.Router();
@@ -169,12 +170,24 @@ router.get("/boards", async (req, res) => {
         .toArray(),
     ]);
 
-    // Attach owner name
+    // Attach owner name — query by both `id` (BetterAuth string) and `_id`
+    // (ObjectId) so Google OAuth users (keyed only by _id) resolve correctly.
     const ownerIds = [...new Set(boardList.map((b) => b.userId))];
     const owners = await users
-      .find({ id: { $in: ownerIds } }, { projection: { id: 1, name: 1, email: 1 } })
+      .find(
+        { $or: [
+          { id: { $in: ownerIds } },
+          { _id: { $in: ownerIds.map((v) => toObjectId(v)).filter(Boolean) } },
+        ]},
+        { projection: { id: 1, name: 1, email: 1 } }
+      )
       .toArray();
-    const ownerMap = Object.fromEntries(owners.map((o) => [o.id, o.name || o.email || o.id]));
+    const ownerMap = {};
+    for (const o of owners) {
+      const label = o.name || o.email || String(o._id);
+      if (o.id) ownerMap[o.id] = label;
+      if (o._id) ownerMap[String(o._id)] = label;
+    }
 
     const result = boardList.map((b) => ({
       id: String(b._id),
