@@ -27,11 +27,13 @@ export default function AuthLayout({ title, subtitle, children, footer }) {
         <ThemeToggle />
       </div>
 
-      <p className="absolute bottom-4 left-0 right-0 z-10 text-center text-xs text-white/60">
-        Built by{" "}
-        <a href="https://jeql8.vercel.app/" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/90">Josh Lui</a>
-        {" · "}
-        <a href="https://www.linkedin.com/in/joshedlui/" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/90">LinkedIn</a>
+      <p className="absolute bottom-4 left-0 right-0 z-10 text-center text-xs">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1 text-white backdrop-blur-sm">
+          Built by{" "}
+          <a href="https://jeql8.vercel.app/" target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2 hover:text-white/80">Josh Lui</a>
+          <span className="opacity-50">·</span>
+          <a href="https://www.linkedin.com/in/joshedlui/" target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2 hover:text-white/80">LinkedIn</a>
+        </span>
       </p>
 
       <div className="animate-fade-in relative z-10 w-full max-w-sm rounded-card border border-[var(--surface-border)] bg-[var(--surface-card)] p-8 shadow-xl shadow-black/10 backdrop-blur-sm">
