@@ -7,10 +7,29 @@ const { registerPresenceHandlers, getChatHistory } = require("./presence");
 const { canAccessBoard, getBoard, toObjectId } = require("../auth/boards");
 const { getCollections } = require("../db");
 
+// Max simultaneous Socket.IO connections per IP — prevents a single client
+// from opening hundreds of sockets to inflate broadcast traffic or memory.
+const MAX_CONNS_PER_IP = 10;
+const connsByIp = new Map(); // ip -> Set of socket ids
+
 function initSocket(io) {
   io.use(socketAuth);
 
   io.on("connection", (socket) => {
+    // Connection cap per IP.
+    const ip = socket.handshake.headers["x-forwarded-for"]?.split(",")[0].trim()
+      || socket.handshake.address;
+    if (!connsByIp.has(ip)) connsByIp.set(ip, new Set());
+    const ipConns = connsByIp.get(ip);
+    if (ipConns.size >= MAX_CONNS_PER_IP) {
+      socket.disconnect(true);
+      return;
+    }
+    ipConns.add(socket.id);
+    socket.on("disconnect", () => {
+      ipConns.delete(socket.id);
+      if (ipConns.size === 0) connsByIp.delete(ip);
+    });
     socket.on("joinWhiteboard", async (whiteboardId) => {
       if (!whiteboardId) return;
 

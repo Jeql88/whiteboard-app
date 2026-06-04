@@ -97,9 +97,15 @@ function registerPresenceHandlers(io, socket) {
   });
 
   // Live cursor — high-frequency, never persisted, never echoed to sender.
+  // Server-side throttle: re-broadcast at most once per 50ms per socket regardless
+  // of how fast the client sends. Client already throttles but can't be trusted.
+  let lastCursor = 0;
   socket.on("cursorUpdate", (payload) => {
     if (!payload?.whiteboardId) return;
     if (!socket.rooms.has(payload.whiteboardId)) return;
+    const now = Date.now();
+    if (now - lastCursor < 50) return;
+    lastCursor = now;
     socket.to(payload.whiteboardId).emit("cursorUpdate", payload);
   });
 
@@ -111,7 +117,14 @@ function registerPresenceHandlers(io, socket) {
 
   // Chat relay (broadcast to the whole room, sender included) + retain in
   // memory for the session so a reload/reopen sees the history.
+  // Rate limit: max 5 messages per 5 seconds per socket to prevent spam floods.
+  let chatTokens = 5;
+  let chatRefillAt = Date.now() + 5000;
   socket.on("chatMessage", (msg) => {
+    const now = Date.now();
+    if (now >= chatRefillAt) { chatTokens = 5; chatRefillAt = now + 5000; }
+    if (chatTokens <= 0) return;
+    chatTokens--;
     if (!msg?.whiteboardId || typeof msg.whiteboardId !== "string") return;
     if (!socket.rooms.has(msg.whiteboardId)) return; // must be in the board
     if (typeof msg.text !== "string" || !msg.text.trim()) return;

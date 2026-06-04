@@ -70,8 +70,21 @@ async function loadScene(whiteboardId) {
   };
 }
 
+// Per-socket token bucket: max 1 scene save per 500ms.
+// Prevents a malicious or runaway client from spamming merges and broadcast traffic.
+function makeSceneLimiter() {
+  let lastSave = 0;
+  return () => {
+    const now = Date.now();
+    if (now - lastSave < 500) return false;
+    lastSave = now;
+    return true;
+  };
+}
+
 function registerSceneHandlers(io, socket) {
   const { scenes, whiteboards } = getCollections();
+  const allowSceneSave = makeSceneLimiter();
 
   socket.on("sceneUpdate", async ({ whiteboardId, elements, appState, files }) => {
     if (!whiteboardId) return;
@@ -80,6 +93,8 @@ function registerSceneHandlers(io, socket) {
     // View-only guests cannot write scene updates.
     if (socket.shareMode === "view") return;
     if (!socket.user?.userId) return;
+    // Server-side rate limit: drop saves faster than 500ms from this socket.
+    if (!allowSceneSave()) return;
     const cleanAppState = sanitizeAppState(appState);
     const userId = socket.user.userId;
 
