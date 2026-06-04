@@ -1,0 +1,39 @@
+# Fly.io deployment config for Whitebored
+# Free tier: shared-cpu-1x, 256MB RAM — upgrade to 512MB if you see OOM
+# 160GB outbound bandwidth/month included free
+
+app = "whitebored"
+primary_region = "sin"  # Singapore — closest to PH
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true   # stop when idle to save free allowance
+  auto_start_machines = true  # wake on first request
+  min_machines_running = 0    # 0 = full sleep when idle (free tier)
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[checks]
+  [checks.health]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    port = 8080
+    timeout = "5s"
+    type = "http"
